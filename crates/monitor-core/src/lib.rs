@@ -11,12 +11,14 @@ pub mod collector;
 pub mod error;
 pub mod families;
 pub mod metric;
+pub mod reasons;
+pub mod sampling;
 pub mod snapshot;
 pub mod units;
 
 pub use capability::{CapabilityReport, MetricCapability};
 pub use clock::{Clock, SystemClock};
-pub use collector::Collector;
+pub use collector::{Collector, PollGroup};
 pub use error::{check_schema_version, CollectorError, ContractViolation, SchemaError};
 pub use metric::{Availability, MetricReading, MetricUnit, MetricValue, SCHEMA_VERSION};
 pub use snapshot::SystemSnapshot;

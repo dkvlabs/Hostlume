@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { LOCALES, useT } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n/dictionaries";
 import type { Appearance } from "@/lib/ipc/types";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -150,6 +151,61 @@ export function SettingsPage() {
               <span className="text-xs text-muted">{t("settings.closeToTrayHint")}</span>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.overviewLayout")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-2">
+          <p className="text-xs text-muted">{t("settings.overviewLayoutHint")}</p>
+          {settings.overview_cards.map((card, index) => (
+            <div key={card.id} className="flex items-center gap-3 text-sm">
+              <Switch
+                id={`card-visible-${card.id}`}
+                checked={card.visible}
+                aria-label={`${t("settings.overviewLayout")}: ${t(("overview.card." + card.id) as MessageKey)}`}
+                onCheckedChange={(visible) => {
+                  const next = settings.overview_cards.map((c, i) =>
+                    i === index ? { ...c, visible } : c
+                  );
+                  void patch({ overview_cards: next });
+                }}
+              />
+              <Label htmlFor={`card-visible-${card.id}`} className="flex-1">
+                {t(("overview.card." + card.id) as MessageKey)}
+              </Label>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={index === 0}
+                aria-label={t("common.moveUp")}
+                onClick={() => {
+                  const next = [...settings.overview_cards];
+                  const [moved] = next.splice(index, 1);
+                  next.splice(index - 1, 0, moved!);
+                  void patch({ overview_cards: next });
+                }}
+              >
+                ↑
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={index === settings.overview_cards.length - 1}
+                aria-label={t("common.moveDown")}
+                onClick={() => {
+                  const next = [...settings.overview_cards];
+                  const [moved] = next.splice(index, 1);
+                  next.splice(index + 1, 0, moved!);
+                  void patch({ overview_cards: next });
+                }}
+              >
+                ↓
+              </Button>
+            </div>
+          ))}
         </CardContent>
       </Card>
 

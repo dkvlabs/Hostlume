@@ -79,6 +79,11 @@ export interface CapabilityReport {
 
 export type Appearance = "system" | "light" | "dark";
 
+export interface OverviewCardPref {
+  id: string;
+  visible: boolean;
+}
+
 export interface Settings {
   schema_version: number;
   appearance: Appearance;
@@ -86,6 +91,7 @@ export interface Settings {
   polling_base_seconds: number;
   close_to_tray: boolean;
   locale: string;
+  overview_cards: OverviewCardPref[];
 }
 
 export interface SettingsPatch {
@@ -94,6 +100,22 @@ export interface SettingsPatch {
   polling_base_seconds?: number;
   close_to_tray?: boolean;
   locale?: string;
+  overview_cards?: OverviewCardPref[];
+}
+
+/** Per-collector health from `get_diagnostics` (no host identifiers). */
+export interface CollectorDiagnostic {
+  id: string;
+  group: string;
+  ticks_total: number;
+  error_count: number;
+  lastOkAtUtc?: string;
+  lastDurationMs?: number;
+  lastError?: string;
+}
+
+export interface DiagnosticsReport {
+  collectors: CollectorDiagnostic[];
 }
 
 /** Structured error from Rust commands; UI localizes via messageKey. */

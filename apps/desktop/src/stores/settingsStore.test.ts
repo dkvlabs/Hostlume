@@ -22,6 +22,10 @@ function validSettings(): Settings {
     polling_base_seconds: 3,
     close_to_tray: false,
     locale: "en",
+    overview_cards: [
+      { id: "cpu", visible: true },
+      { id: "memory", visible: true },
+    ],
   };
 }
 

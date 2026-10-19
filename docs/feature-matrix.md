@@ -4,12 +4,12 @@
 
 | FX ID | Feature | Reference? | Priority | Owning phase | Initial status | Key acceptance evidence |
 |---|---|---|---|---|---|---|
-| FX-001 | Device identity, uptime and hardware summary | Yes | P0 | 02 | planned | Native values + unavailable states |
-| FX-002 | CPU overall and per-core history | Yes | P0 | 02 | planned | Two samples, rates and per-core tests |
-| FX-003 | Memory/pressure/swap | Yes | P0 | 02 | planned | OS-specific categories and chart |
-| FX-004 | Disks/mounts/capacity/external drives | Yes | P0 | 02 | planned | Add/remove devices; eject guarded |
-| FX-005 | Configurable overview dashboard | Yes | P0 | 02 | planned | Real snapshot subscription; responsive |
-| FX-006 | Network interfaces, addresses and speeds | Yes | P0 | 02 | planned | Per-adapter bytes/sec, resets/gaps |
+| FX-001 | Device identity, uptime and hardware summary | Yes | P0 | 02 | in_progress | Native values + unavailable states |
+| FX-002 | CPU overall and per-core history | Yes | P0 | 02 | in_progress | Two samples, rates and per-core tests |
+| FX-003 | Memory/pressure/swap | Yes | P0 | 02 | in_progress | OS-specific categories and chart |
+| FX-004 | Disks/mounts/capacity/external drives | Yes | P0 | 02 | in_progress | Add/remove devices; eject guarded |
+| FX-005 | Configurable overview dashboard | Yes | P0 | 02 | in_progress | Real snapshot subscription; responsive |
+| FX-006 | Network interfaces, addresses and speeds | Yes | P0 | 02 | in_progress | Per-adapter bytes/sec, resets/gaps |
 | FX-007 | Applications/process history and quit | Yes | P0 | 03 | planned | PID+start-time validation, permission handling |
 | FX-008 | Disk visualizer, large files, Move to Trash | Yes | P0 | 04 | planned | Cancel, safe symlinks, native Trash |
 | FX-009 | Disk I/O read/write counters and rates | Yes | P1 | 04 | planned | Real adapter-based source + test |

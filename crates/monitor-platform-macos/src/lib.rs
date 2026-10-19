@@ -9,6 +9,7 @@
 
 use monitor_core::{
     families, Availability, Clock, Collector, CollectorError, MetricCapability, MetricReading,
+    PollGroup,
 };
 
 pub const COLLECTOR_ID: &str = "platform-macos";
@@ -59,6 +60,10 @@ impl PlatformCollector {
 impl Collector for PlatformCollector {
     fn id(&self) -> &'static str {
         COLLECTOR_ID
+    }
+
+    fn poll_group(&self) -> PollGroup {
+        PollGroup::Slow
     }
 
     fn capabilities(&self) -> Vec<MetricCapability> {

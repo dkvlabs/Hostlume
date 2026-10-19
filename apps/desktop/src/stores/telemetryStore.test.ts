@@ -25,6 +25,7 @@ function reset() {
     connection: "connecting",
     error: null,
     receivedAtMs: null,
+    history: {},
   });
 }
 

@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   isCapabilityReport,
+  isDiagnosticsReport,
   isSettings,
   isSystemSnapshot,
   isTelemetryEventPayload,
@@ -14,6 +15,7 @@ import {
 import type {
   CapabilityReport,
   CommandErrorPayload,
+  DiagnosticsReport,
   Settings,
   SettingsPatch,
   SystemSnapshot,
@@ -87,6 +89,14 @@ export const ipc = {
   async updateSettings(patch: SettingsPatch): Promise<Settings> {
     try {
       return await invokeValidated("update_settings", { patch }, isSettings);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async getDiagnostics(): Promise<DiagnosticsReport> {
+    try {
+      return await invokeValidated("get_diagnostics", undefined, isDiagnosticsReport);
     } catch (err) {
       throw toIpcError(err);
     }

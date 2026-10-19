@@ -138,16 +138,19 @@ describe("isSettings", () => {
     polling_base_seconds: 3,
     close_to_tray: false,
     locale: "en",
+    overview_cards: [{ id: "cpu", visible: true }],
   };
 
   it("accepts valid settings", () => {
     expect(isSettings(valid)).toBe(true);
   });
 
-  it("rejects wrong schema or unknown appearance", () => {
+  it("rejects wrong schema, unknown appearance or bad card list", () => {
     expect(isSettings({ ...valid, schema_version: 9 })).toBe(false);
     expect(isSettings({ ...valid, appearance: "sepia" })).toBe(false);
     expect(isSettings({ ...valid, polling_base_seconds: "3" })).toBe(false);
+    expect(isSettings({ ...valid, overview_cards: "cpu" })).toBe(false);
+    expect(isSettings({ ...valid, overview_cards: [{ id: 3, visible: true }] })).toBe(false);
   });
 });
 

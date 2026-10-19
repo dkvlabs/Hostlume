@@ -4,7 +4,8 @@
 //! capability only, no shell/filesystem plugins, all command inputs
 //! validated in Rust, no remote listener, no privileged helper.
 
-mod commands;
+pub mod collectors;
+pub mod commands;
 mod scheduler;
 mod settings;
 mod settings_store;
@@ -59,6 +60,7 @@ pub fn run() {
             let capabilities_revision = Arc::new(AtomicU64::new(capabilities.revision));
             let latest: Arc<RwLock<Option<monitor_core::SystemSnapshot>>> = Arc::default();
             let polling_secs = Arc::new(AtomicU32::new(settings.polling_base_seconds));
+            let diagnostics: scheduler::DiagnosticsMap = Arc::default();
 
             let emit_handle = handle.clone();
             let emitter: scheduler::TelemetryEmitter = Arc::new(move |payload| {
@@ -71,6 +73,7 @@ pub fn run() {
                 latest.clone(),
                 polling_secs.clone(),
                 capabilities_revision.clone(),
+                diagnostics.clone(),
                 emitter,
             );
 
@@ -79,6 +82,7 @@ pub fn run() {
                 capabilities,
                 store,
                 polling_secs,
+                diagnostics,
                 scheduler: scheduler_handle,
             });
             Ok(())
@@ -99,6 +103,7 @@ pub fn run() {
             commands::get_capabilities,
             commands::get_settings,
             commands::update_settings,
+            commands::get_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running APP_NAME");

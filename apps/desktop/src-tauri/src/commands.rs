@@ -62,6 +62,20 @@ pub fn get_capabilities(state: State<'_, AppState>) -> CapabilityReport {
     state.capabilities.clone()
 }
 
+/// Per-collector health: tick counts, errors, last success and duration.
+/// Contains no host-identifying information.
+#[tauri::command]
+pub fn get_diagnostics(state: State<'_, AppState>) -> crate::scheduler::DiagnosticsReport {
+    let map = state
+        .diagnostics
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut collectors: Vec<crate::scheduler::CollectorDiagnostic> =
+        map.values().cloned().collect();
+    collectors.sort_by(|a, b| a.id.cmp(&b.id));
+    crate::scheduler::DiagnosticsReport { collectors }
+}
+
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<crate::settings::Settings, CommandError> {
     state

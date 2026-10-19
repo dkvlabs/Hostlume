@@ -10,7 +10,7 @@ use monitor_core::{Clock, SystemClock};
 use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
-use crate::settings::{Settings, SettingsError, SETTINGS_SCHEMA_VERSION};
+use crate::settings::{Settings, SettingsError, SettingsV1, SETTINGS_SCHEMA_VERSION};
 
 /// One ordered schema migration. Checksums pin content: a database created
 /// by a different build is refused instead of silently diverged.
@@ -130,28 +130,40 @@ impl SettingsStore {
     }
 
     pub fn load_settings(&self) -> Result<Settings, StoreError> {
-        let conn = self.lock_conn();
-        let row: Option<(i64, String)> = conn
-            .query_row(
+        let row: Option<(i64, String)> = {
+            let conn = self.lock_conn();
+            conn.query_row(
                 "SELECT schema_version, json_value FROM app_settings WHERE key = 'app'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .optional()?;
+            .optional()?
+        };
         let Some((version, json)) = row else {
             return Ok(Settings::default());
         };
-        if version != SETTINGS_SCHEMA_VERSION as i64 {
-            return Err(StoreError::Settings(
+        match version {
+            1 => {
+                // Load-time settings migration v1 -> v2 (FX-005 layout): the
+                // stored preferences carry over and defaults are appended.
+                // The migrated row is persisted so migration happens once.
+                let v1: SettingsV1 = serde_json::from_str(&json)?;
+                let migrated = v1.into_v2();
+                self.save_settings(&migrated)?;
+                Ok(migrated)
+            }
+            v if v == SETTINGS_SCHEMA_VERSION as i64 => {
+                let settings: Settings = serde_json::from_str(&json)?;
+                settings.validate()?;
+                Ok(settings)
+            }
+            found => Err(StoreError::Settings(
                 SettingsError::UnsupportedSchemaVersion {
-                    found: version as u32,
+                    found: found as u32,
                     supported: SETTINGS_SCHEMA_VERSION,
                 },
-            ));
+            )),
         }
-        let settings: Settings = serde_json::from_str(&json)?;
-        settings.validate()?;
-        Ok(settings)
     }
 
     pub fn save_settings(&self, settings: &Settings) -> Result<(), StoreError> {
@@ -374,6 +386,46 @@ mod tests {
         };
         assert!(store.save_settings(&s).is_err(), "out-of-bounds rejected");
         assert_eq!(store.load_settings().unwrap(), Settings::default());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn v1_row_migrates_to_v2_on_load_and_persists() {
+        let path = temp_db_path("settings-v1-migration");
+        let store = SettingsStore::open(&path).unwrap();
+        // Simulate a v1-era row: version 1, JSON without overview_cards.
+        let v1_json = r#"{"schema_version":1,"appearance":"dark","compact_mode":true,"polling_base_seconds":5,"close_to_tray":false,"locale":"ro"}"#;
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO app_settings (key, schema_version, json_value) VALUES ('app', 1, ?1)",
+                rusqlite::params![v1_json],
+            )
+            .unwrap();
+        }
+        let migrated = store.load_settings().unwrap();
+        assert_eq!(migrated.schema_version, 2);
+        assert_eq!(migrated.appearance, crate::settings::Appearance::Dark);
+        assert_eq!(migrated.polling_base_seconds, 5);
+        assert_eq!(migrated.locale, "ro");
+        assert_eq!(
+            migrated.overview_cards,
+            crate::settings::default_overview_cards(),
+            "defaults appended by migration"
+        );
+        // Migration persisted: reloads return v2 directly.
+        let again = store.load_settings().unwrap();
+        assert_eq!(again, migrated);
+        let conn = store.conn.lock().unwrap();
+        let version: i64 = conn
+            .query_row(
+                "SELECT schema_version FROM app_settings WHERE key = 'app'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, 2);
+        drop(conn);
         cleanup(&path);
     }
 }

@@ -8,6 +8,7 @@ import type {
   Availability,
   CapabilityReport,
   CommandErrorPayload,
+  DiagnosticsReport,
   MetricCapability,
   MetricReading,
   Settings,
@@ -110,6 +111,12 @@ export function isCapabilityReport(value: unknown): value is CapabilityReport {
   return value.capabilities.every((c) => isMetricCapability(c));
 }
 
+export function isOverviewCardPref(value: unknown): value is { id: string; visible: boolean } {
+  return (
+    isRecord(value) && typeof value.id === "string" && typeof value.visible === "boolean"
+  );
+}
+
 export function isSettings(value: unknown): value is Settings {
   if (!isRecord(value)) return false;
   if (value.schema_version !== SCHEMA_VERSION) return false;
@@ -118,7 +125,22 @@ export function isSettings(value: unknown): value is Settings {
   if (!isFiniteNumber(value.polling_base_seconds)) return false;
   if (typeof value.close_to_tray !== "boolean") return false;
   if (typeof value.locale !== "string") return false;
-  return true;
+  if (!Array.isArray(value.overview_cards)) return false;
+  return value.overview_cards.every((card) => isOverviewCardPref(card));
+}
+
+export function isDiagnosticsReport(value: unknown): value is DiagnosticsReport {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.collectors)) return false;
+  return value.collectors.every((c) => {
+    if (!isRecord(c)) return false;
+    return (
+      typeof c.id === "string" &&
+      typeof c.group === "string" &&
+      typeof c.ticks_total === "number" &&
+      typeof c.error_count === "number"
+    );
+  });
 }
 
 export function isCommandErrorPayload(value: unknown): value is CommandErrorPayload {
