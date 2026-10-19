@@ -5,6 +5,7 @@ vi.mock("@/lib/ipc/client", () => ({
   ipc: {
     getSettings: vi.fn(),
     updateSettings: vi.fn(),
+    resetSettings: vi.fn(),
   },
 }));
 
@@ -13,6 +14,7 @@ import { useSettingsStore } from "./settingsStore";
 
 const mockedGetSettings = vi.mocked(ipc.getSettings);
 const mockedUpdateSettings = vi.mocked(ipc.updateSettings);
+const mockedResetSettings = vi.mocked(ipc.resetSettings);
 
 function validSettings(): Settings {
   return {
@@ -95,6 +97,40 @@ describe("settingsStore", () => {
     expect(ok).toBe(false);
     const state = useSettingsStore.getState();
     expect(state.settings?.polling_base_seconds).toBe(3);
+    expect(state.error).toBeTruthy();
+  });
+
+  it("reset adopts the backend defaults (remote off, token erased)", async () => {
+    const customized = {
+      ...validSettings(),
+      close_to_tray: true,
+      remote: { mode: "loopback" as const, port: 51515 },
+      remote_token_hash: "abc123",
+    };
+    useSettingsStore.setState({ settings: customized, status: "ready" });
+    const defaults = validSettings();
+    mockedResetSettings.mockResolvedValue(defaults);
+    const ok = await useSettingsStore.getState().reset();
+    expect(ok).toBe(true);
+    expect(mockedResetSettings).toHaveBeenCalledWith();
+    const state = useSettingsStore.getState();
+    expect(state.settings?.close_to_tray).toBe(false);
+    expect(state.settings?.remote.mode).toBe("off");
+    expect(state.settings?.remote_token_hash).toBeNull();
+    expect(state.error).toBeNull();
+  });
+
+  it("failed reset keeps the current settings and records the error", async () => {
+    const initial = validSettings();
+    useSettingsStore.setState({ settings: initial, status: "ready" });
+    mockedResetSettings.mockRejectedValue({
+      code: "STORE_UNAVAILABLE",
+      messageKey: "errors.storeUnavailable",
+    });
+    const ok = await useSettingsStore.getState().reset();
+    expect(ok).toBe(false);
+    const state = useSettingsStore.getState();
+    expect(state.settings).toBe(initial);
     expect(state.error).toBeTruthy();
   });
 });

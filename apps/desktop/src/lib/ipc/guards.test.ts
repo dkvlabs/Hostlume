@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isCapabilityReport,
@@ -6,6 +8,7 @@ import {
   isSystemSnapshot,
   isTelemetryEventPayload,
 } from "./guards";
+import { SETTINGS_SCHEMA_VERSION } from "./types";
 import type { SystemSnapshot } from "./types";
 
 function validSnapshot(): SystemSnapshot {
@@ -160,8 +163,33 @@ describe("isSettings", () => {
     expect(isSettings(valid)).toBe(true);
   });
 
-  it("rejects wrong schema, unknown appearance or bad card list", () => {
-    expect(isSettings({ ...valid, schema_version: 9 })).toBe(false);
+  it("accepts the real Settings::default() serialization from Rust (contract fixture)", () => {
+    // Pinned by apps/desktop/src-tauri/src/settings.rs
+    // `default_settings_fixture_matches_frontend_contract`. Vitest runs with
+    // cwd = apps/desktop (jsdom gives import.meta.url an http scheme).
+    const fixture: unknown = JSON.parse(
+      readFileSync(
+        join(process.cwd(), "src/lib/ipc/__fixtures__/settings-default.json"),
+        "utf8"
+      )
+    );
+    expect(isSettings(fixture)).toBe(true);
+    expect((fixture as { schema_version: number }).schema_version).toBe(
+      SETTINGS_SCHEMA_VERSION
+    );
+  });
+
+  it("accepts any current-or-future positive settings schema version", () => {
+    // Rust migrates rows at load time and owns the version number; the
+    // guard must not pin it to the telemetry contract version.
+    expect(isSettings({ ...valid, schema_version: SETTINGS_SCHEMA_VERSION })).toBe(true);
+    expect(isSettings({ ...valid, schema_version: 9 })).toBe(true);
+  });
+
+  it("rejects non-positive or non-integer schema, unknown appearance or bad card list", () => {
+    expect(isSettings({ ...valid, schema_version: 0 })).toBe(false);
+    expect(isSettings({ ...valid, schema_version: 1.5 })).toBe(false);
+    expect(isSettings({ ...valid, schema_version: "8" })).toBe(false);
     expect(isSettings({ ...valid, appearance: "sepia" })).toBe(false);
     expect(isSettings({ ...valid, polling_base_seconds: "3" })).toBe(false);
     expect(isSettings({ ...valid, overview_cards: "cpu" })).toBe(false);

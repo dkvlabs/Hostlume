@@ -4,7 +4,18 @@
  * runtime-validates every payload crossing the IPC boundary.
  */
 
+/** Telemetry contract version (`monitor_core::SCHEMA_VERSION`). */
 export const SCHEMA_VERSION = 1;
+
+/**
+ * Settings schema version (`settings::SETTINGS_SCHEMA_VERSION` in
+ * src-tauri). Distinct from the telemetry contract: Rust migrates stored
+ * rows at load time and always returns the current version, so the guard
+ * only requires a positive integer — never equality with the telemetry
+ * version (phase 09 release smoke found that mismatch rejecting every real
+ * settings payload). Pinned by `settings-default.json` contract tests.
+ */
+export const SETTINGS_SCHEMA_VERSION = 8;
 
 export type Availability =
   | "available"

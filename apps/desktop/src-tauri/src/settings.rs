@@ -799,6 +799,38 @@ mod tests {
         assert_eq!(s.overview_cards.len(), OVERVIEW_CARD_IDS.len());
     }
 
+    /// Cross-language contract pin (phase 09): the frontend guard tests run
+    /// against this exact serialization of `Settings::default()`, so a Rust
+    /// schema change that the TypeScript side does not mirror fails here,
+    /// not in a user's running app. Regenerate with `UPDATE_FIXTURES=1`.
+    #[test]
+    fn default_settings_fixture_matches_frontend_contract() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src/lib/ipc/__fixtures__/settings-default.json");
+        let actual = serde_json::to_value(Settings::default()).expect("serialize");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::create_dir_all(path.parent().expect("fixture dir")).expect("mkdir");
+            let pretty = serde_json::to_string_pretty(&actual).expect("pretty");
+            std::fs::write(&path, format!("{pretty}\n")).expect("write fixture");
+        }
+        let stored = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "missing {}: {err}; run `UPDATE_FIXTURES=1 cargo test -p app --lib \
+                 default_settings_fixture_matches_frontend_contract`",
+                path.display()
+            )
+        });
+        let expected: serde_json::Value = serde_json::from_str(&stored).expect("fixture json");
+        assert_eq!(
+            actual, expected,
+            "settings-default.json drifted from Settings::default(); regenerate with UPDATE_FIXTURES=1"
+        );
+        assert_eq!(
+            expected["schema_version"],
+            serde_json::json!(SETTINGS_SCHEMA_VERSION)
+        );
+    }
+
     #[test]
     fn polling_bounds_are_enforced() {
         let mut s = Settings {

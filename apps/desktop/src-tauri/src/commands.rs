@@ -204,6 +204,48 @@ pub fn update_settings(
     Ok(updated)
 }
 
+/// Restore factory settings (release lifecycle, phase 09 §2.3; user-facing
+/// reset per security-privacy.md §7). The settings row returns to schema
+/// defaults — which means the remote listener is stopped and its token hash
+/// erased (a reset must never leave a listener running), and the OS login
+/// item is disabled — while history, alert rules/events and exported files
+/// are deliberately untouched. When the OS call fails, nothing is persisted
+/// and the previous settings remain authoritative.
+#[tauri::command]
+pub fn reset_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::settings::Settings, CommandError> {
+    use tauri_plugin_autostart::ManagerExt;
+    // disable() is a no-op when the login item was never enabled, so it is
+    // safe to call unconditionally (plugin treats NotFound as success).
+    app.autolaunch()
+        .disable()
+        .map_err(|error| CommandError::store(format!("autostart: {error}")))?;
+    let defaults = crate::settings::Settings::default();
+    state
+        .store
+        .save_settings(&defaults)
+        .map_err(|err| CommandError::store(err.to_string()))?;
+    state
+        .polling_secs
+        .store(defaults.polling_base_seconds, Ordering::Relaxed);
+    if let Some(tray) = state.tray.as_ref() {
+        tray.apply_config(
+            defaults.tray,
+            defaults.rate_unit == crate::settings::RateUnit::Bits,
+        );
+    }
+    *state
+        .alerts
+        .config
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = defaults.alerts;
+    // Idempotent: stops a running listener or clears nothing.
+    crate::remote::shutdown_remote(&state);
+    Ok(defaults)
+}
+
 /// Process table for the Applications page. Polled by the frontend while
 /// the page is visible (single bounded source — never per-row timers).
 #[tauri::command]

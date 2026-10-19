@@ -1,0 +1,74 @@
+{
+  "alerts": {
+    "actions_enabled": false,
+    "notifications_enabled": true,
+    "quiet_end_minute": 480,
+    "quiet_hours_enabled": false,
+    "quiet_start_minute": 1320
+  },
+  "appearance": "system",
+  "close_to_tray": false,
+  "compact_mode": false,
+  "external_lookup": {
+    "enabled": false,
+    "provider": "ipify",
+    "timeout_secs": 5
+  },
+  "history": {
+    "raw_hours": 24,
+    "rollup_1h_days": 365,
+    "rollup_1m_days": 30
+  },
+  "launch_at_login": false,
+  "locale": "en",
+  "overview_cards": [
+    {
+      "id": "cpu",
+      "visible": true
+    },
+    {
+      "id": "memory",
+      "visible": true
+    },
+    {
+      "id": "storage",
+      "visible": true
+    },
+    {
+      "id": "network",
+      "visible": true
+    },
+    {
+      "id": "host",
+      "visible": true
+    },
+    {
+      "id": "gpu",
+      "visible": true
+    },
+    {
+      "id": "sensors",
+      "visible": true
+    },
+    {
+      "id": "battery",
+      "visible": true
+    }
+  ],
+  "polling_base_seconds": 3,
+  "rate_unit": "bytes",
+  "remote": {
+    "mode": "off",
+    "port": 45454
+  },
+  "remote_token_hash": null,
+  "schema_version": 8,
+  "temperature_unit": "celsius",
+  "tray": {
+    "enabled": true,
+    "show_cpu": true,
+    "show_memory": true,
+    "show_network": true,
+    "show_title": true
+  }
+}

@@ -31,9 +31,12 @@ export function SettingsPage() {
   const t = useT();
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
+  const reset = useSettingsStore((s) => s.reset);
   const [feedback, setFeedback] = useState<"saved" | "failed" | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearFeedback, setClearFeedback] = useState<boolean | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState<boolean | null>(null);
 
   if (!settings) {
     return (
@@ -352,6 +355,47 @@ export function SettingsPage() {
               .catch(() => setClearFeedback(false));
           }}
           onCancel={() => setConfirmClear(false)}
+        />
+      ) : null}
+
+      {/* Release lifecycle (phase 09): restore factory settings. History,
+          alert rules and exported files are never touched; the remote
+          listener stops and its access token is erased. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.reset.title")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <p className="text-xs text-muted">{t("settings.reset.hint")}</p>
+          <Button
+            variant="destructive"
+            className="w-fit"
+            onClick={() => setConfirmReset(true)}
+          >
+            {t("settings.reset.button")}
+          </Button>
+          {resetFeedback !== null ? (
+            <p className="text-xs text-muted" role="status">
+              {resetFeedback
+                ? t("settings.reset.done")
+                : t("settings.reset.failed")}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {confirmReset ? (
+        <ConfirmActionDialog
+          open
+          destructive
+          title={t("settings.reset.confirmTitle")}
+          body={t("settings.reset.confirmBody")}
+          confirmLabel={t("settings.reset.button")}
+          onConfirm={() => {
+            setConfirmReset(false);
+            void reset().then(setResetFeedback);
+          }}
+          onCancel={() => setConfirmReset(false)}
         />
       ) : null}
 

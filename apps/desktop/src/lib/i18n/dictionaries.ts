@@ -97,6 +97,15 @@ export const en = {
   "history.clearConfirmBody":
     "All stored samples and rollups are deleted permanently. Settings and audit records are kept.",
   "history.cleared": "History cleared",
+  "settings.reset.title": "Reset settings",
+  "settings.reset.hint":
+    "Restores factory settings: the remote monitor stops, its access token is erased and launch-at-login turns off. History, alert rules and exported files are kept.",
+  "settings.reset.button": "Reset settings…",
+  "settings.reset.confirmTitle": "Restore factory settings?",
+  "settings.reset.confirmBody":
+    "All preferences return to their defaults and the remote monitor stops. Stored history, alert rules and events are not deleted.",
+  "settings.reset.done": "Settings restored to defaults",
+  "settings.reset.failed": "Reset was rejected; your settings are unchanged.",
   "history.gaps": "gaps",
   "history.missing": "missing",
   "errors.historyInvalid": "The history request was rejected as invalid.",
@@ -485,6 +494,15 @@ export const ro: Dictionary = {
   "history.clearConfirmBody":
     "Toate eșantioanele și agregările șterse definitiv. Setările și înregistrările de audit rămân.",
   "history.cleared": "Istoric golit",
+  "settings.reset.title": "Resetează setările",
+  "settings.reset.hint":
+    "Restabilește setările din fabrică: monitorul remote se oprește, jetonul de acces este șters iar pornirea la autentificare se dezactivează. Istoricul, regulile de alertă și fișierele exportate rămân.",
+  "settings.reset.button": "Resetează setările…",
+  "settings.reset.confirmTitle": "Restabilești setările din fabrică?",
+  "settings.reset.confirmBody":
+    "Toate preferințele revin la valorile implicite iar monitorul remote se oprește. Istoricul stocat, regulile și evenimentele de alertă nu se șterg.",
+  "settings.reset.done": "Setările au fost restabilite la valorile implicite",
+  "settings.reset.failed": "Resetarea a fost respinsă; setările tale rămân neschimbate.",
   "history.gaps": "întreruperi",
   "history.missing": "lipsă",
   "errors.historyInvalid": "Cererea de istoric a fost respinsă ca invalidă.",

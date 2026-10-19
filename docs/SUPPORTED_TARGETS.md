@@ -50,3 +50,16 @@ Windows and Linux toolchains: **NOT PRESENT on this machine** — first verifica
 2. Phase 02: live CPU/memory/disk/network parity cross-check against OS tools on each available target (testing-qa.md §4).
 3. Phase 05+: per-host sensor capability matrix from real hardware, with `unsupported` states where hardware/drivers are silent.
 4. Phase 09: signed installers built and manually launched per target before any release claim.
+
+## Phase 09 release-candidate status (19.10.2026)
+
+| Target | Status after phase 09 | Basis |
+|---|---|---|
+| macOS arm64 — macOS 27.0.1, Apple M3 Max | **Release candidate (unsigned)** — `.app` + `.dmg` built, DMG checksum verified and mounted, launched three times, 30 + 10 min soaks, OS quit exit 0, no panics | docs/progress/PHASE-09.md, docs/progress/PERF-2026-10-19.md, CHANGELOG.md |
+| macOS arm64 — declared minimum | `LSMinimumSystemVersion` **11.0** (documented product floor) | Not tested below 27.0.1; the floor is a declaration, not a validated minimum |
+| macOS arm64 — signing | **Blocked**: ad-hoc linker signature only; `spctl --assess` fails; no notarization | Owner's Apple Developer identity + notarization run required before distribution |
+| macOS x86_64 (Intel) | **Not built, not claimed** | No Intel hardware/runner in any phase |
+| Windows 11/10 x64 | **Not built, not claimed** | Code compiles behind `cfg(windows)` gates in earlier phases; no native build, install or runtime evidence (ADR-0005) |
+| Linux x86_64 (GNOME / KDE) | **Not built, not claimed** | Fixture-tested parsers only; WebKitGTK/tray/packaging never exercised (ADR-0005) |
+
+Rollout posture (phase 09 §5): ship the macOS arm64 candidate once signed, labelled as the only supported target; other targets stay "intended" with transparent gating until native evidence exists.

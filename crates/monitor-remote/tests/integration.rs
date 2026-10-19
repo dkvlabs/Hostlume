@@ -133,6 +133,54 @@ fn off_never_binds_and_lan_fails_closed() {
     assert!(matches!(err, monitor_remote::RemoteError::LanRequiresTls));
 }
 
+/// security-privacy.md §9 "cross-origin browser request": the server never
+/// grants cross-origin read access (no `Access-Control-Allow-Origin`, so a
+/// browser blocks the response) and a foreign `Origin` buys nothing — the
+/// token is still required, and a valid token still produces no CORS grant.
+#[test]
+fn cross_origin_requests_get_no_cors_grant_and_still_need_auth() {
+    let server = start_server();
+    // Capabilities always answer (snapshot routes are 503 until a tick).
+    let url = format!("http://127.0.0.1:{}/api/v1/capabilities", server.port);
+
+    let anonymous = ureq::request("GET", &url)
+        .set("Origin", "https://evil.example")
+        .call();
+    let response = match anonymous {
+        Err(ureq::Error::Status(_, response)) | Ok(response) => response,
+        Err(other) => panic!("request failed: {other}"),
+    };
+    assert_eq!(response.status(), 401);
+    assert!(response.header("access-control-allow-origin").is_none());
+    assert!(response
+        .header("access-control-allow-credentials")
+        .is_none());
+
+    let authed = ureq::request("GET", &url)
+        .set("Origin", "https://evil.example")
+        .set("Authorization", &format!("Bearer {}", server.token))
+        .call()
+        .expect("authenticated read");
+    assert_eq!(authed.status(), 200);
+    assert!(authed.header("access-control-allow-origin").is_none());
+
+    // Preflight for a cross-origin fetch has no handler: nothing to grant.
+    let preflight = ureq::request("OPTIONS", &url)
+        .set("Origin", "https://evil.example")
+        .set("Access-Control-Request-Method", "GET")
+        .call();
+    let preflight = match preflight {
+        Err(ureq::Error::Status(_, response)) | Ok(response) => response,
+        Err(other) => panic!("preflight failed: {other}"),
+    };
+    assert!(
+        preflight.status() == 405 || preflight.status() == 404 || preflight.status() == 401,
+        "unexpected preflight status {}",
+        preflight.status()
+    );
+    assert!(preflight.header("access-control-allow-origin").is_none());
+}
+
 /// Missing / wrong tokens are 401 on every data route; the token is never
 /// echoed in any response.
 #[test]

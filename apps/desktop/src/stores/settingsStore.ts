@@ -14,6 +14,8 @@ interface SettingsState {
   load: () => Promise<void>;
   /** Optimistic update; returns true when the backend accepted it. */
   update: (patch: SettingsPatch) => Promise<boolean>;
+  /** Restore factory settings; returns true when the backend accepted. */
+  reset: () => Promise<boolean>;
 }
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
@@ -55,6 +57,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         settings: previous,
         error: err instanceof Error ? err.message : String(err),
       });
+      return false;
+    }
+  },
+
+  reset: async () => {
+    try {
+      const defaults = await ipc.resetSettings();
+      set({ settings: defaults, error: null });
+      return true;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
       return false;
     }
   },

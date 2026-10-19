@@ -97,6 +97,62 @@ fn open_history_connection(
     Ok(conn)
 }
 
+/// One-line crash entry (phase 09 crash handling): UTC timestamp, thread,
+/// panic location and a truncated payload. The payload is developer text,
+/// not telemetry — the log stays in the app data directory and is never
+/// uploaded anywhere.
+fn crash_log_line(thread: Option<&str>, payload: &str, location: Option<&str>) -> String {
+    const MAX_PAYLOAD: usize = 500;
+    let truncated = if payload.chars().count() > MAX_PAYLOAD {
+        let cut: String = payload.chars().take(MAX_PAYLOAD).collect();
+        format!("{cut}…")
+    } else {
+        payload.to_string()
+    };
+    format!(
+        "{} panic thread={:?} location={} payload={truncated:?}\n",
+        monitor_core::SystemClock.now_utc_iso8601(),
+        thread.unwrap_or("<unnamed>"),
+        location.unwrap_or("<unknown>"),
+    )
+}
+
+/// Append a prepared line, creating the file if needed. Best effort: a
+/// panicking hook must never panic and must never mask the real failure.
+fn append_crash_entry(path: &std::path::Path, line: &str) {
+    let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new("/")));
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, line.as_bytes()));
+}
+
+/// Install the crash logger before any subsystem that can panic. The
+/// default stderr hook is chained so console runs keep their output.
+fn install_crash_logger(dir: &std::path::Path) {
+    let path = dir.join("crash.log");
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = if let Some(text) = info.payload().downcast_ref::<&str>() {
+            (*text).to_string()
+        } else if let Some(text) = info.payload().downcast_ref::<String>() {
+            text.clone()
+        } else {
+            "non-string panic payload".to_string()
+        };
+        let line = crash_log_line(
+            std::thread::current().name(),
+            &payload,
+            info.location()
+                .map(|location| location.to_string())
+                .as_deref(),
+        );
+        append_crash_entry(&path, &line);
+        previous(info);
+    }));
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
@@ -113,6 +169,8 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = handle.path().app_data_dir()?;
+            // Crash handling first: every later subsystem can panic.
+            install_crash_logger(&data_dir);
             let db_path = data_dir.join("settings.sqlite3");
             let store = Arc::new(settings_store::SettingsStore::open(&db_path)?);
             let host_id = store.host_id()?;
@@ -197,9 +255,18 @@ pub fn run() {
                 }));
 
             let emit_handle = handle.clone();
+            // Emit failures were previously discarded; a webview that never
+            // receives ticks shows stale data with no diagnostic. Report the
+            // first failure and then one per 100 so the log stays bounded.
+            let emit_failures = Arc::new(AtomicU64::new(0));
             let emitter: scheduler::TelemetryEmitter = Arc::new(move |payload| {
                 use tauri::Emitter;
-                let _ = emit_handle.emit(scheduler::TELEMETRY_EVENT, payload);
+                if let Err(error) = emit_handle.emit(scheduler::TELEMETRY_EVENT, payload) {
+                    let count = emit_failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if count == 0 || count.is_multiple_of(100) {
+                        eprintln!("telemetry emit failed ({} so far): {error}", count + 1);
+                    }
+                }
             });
             let scheduler_handle = scheduler::spawn(
                 host_id.clone(),
@@ -309,6 +376,7 @@ pub fn run() {
             commands::get_gpu_info,
             commands::get_settings,
             commands::update_settings,
+            commands::reset_settings,
             commands::get_diagnostics,
             commands::get_process_page,
             commands::request_process_action,
@@ -385,5 +453,34 @@ mod tests {
             || c.explanation
                 .as_deref()
                 .is_some_and(|text| !text.is_empty())));
+    }
+
+    /// Crash entries are one line each, name the thread and truncate long
+    /// payloads (crash handling, phase 09 §2.3).
+    #[test]
+    fn crash_log_line_is_single_line_and_truncated() {
+        let line = crash_log_line(Some("main"), "short failure", Some("src/lib.rs:10:5"));
+        assert!(line.ends_with('\n'));
+        assert_eq!(line.matches('\n').count(), 1);
+        assert!(line.contains("thread="));
+        assert!(line.contains("src/lib.rs:10:5"));
+
+        let long = "x".repeat(2_000);
+        let truncated = crash_log_line(None, &long, None);
+        assert!(truncated.chars().count() < 600);
+        assert!(truncated.contains("…"));
+        assert!(truncated.contains("<unnamed>"));
+    }
+
+    /// The crash log appends across runs and never rewrites history.
+    #[test]
+    fn append_crash_entry_appends_without_truncating() {
+        let dir = std::env::temp_dir().join(format!("hostlume-crash-{}", uuid::Uuid::new_v4()));
+        let path = dir.join("crash.log");
+        append_crash_entry(&path, "first\n");
+        append_crash_entry(&path, "second\n");
+        let contents = std::fs::read_to_string(&path).expect("crash log readable");
+        assert_eq!(contents, "first\nsecond\n");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

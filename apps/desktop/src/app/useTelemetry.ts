@@ -2,6 +2,13 @@
  * Wires the Rust scheduler to the telemetry store: fetch the current
  * snapshot on mount, refresh on every push event whose sequence advanced,
  * and flag staleness when ticks stop arriving (sleep, suspend, error).
+ *
+ * Sequence gating (phase 09 release smoke fix): `appliedSequence` is the
+ * sequence of the snapshot the store currently holds and only advances when
+ * a fetched snapshot is applied. The push event merely signals that a newer
+ * snapshot exists; it must not pre-advance the applied sequence, otherwise
+ * the fetch that follows (same sequence as the event) is discarded and the
+ * UI only refreshes when a tick happens to land between emit and fetch.
  */
 import { useEffect } from "react";
 import { ipc, onTelemetry } from "@/lib/ipc/client";
@@ -15,15 +22,19 @@ export function useTelemetry(): void {
 
   useEffect(() => {
     let disposed = false;
-    let knownSequence = -1;
+    let appliedSequence = -1;
+    let inFlight = false;
+    let pendingSequence = -1;
     setConnecting();
 
     const fetchSnapshot = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const snapshot = await ipc.getSnapshot();
         if (disposed) return;
-        if (snapshot.sequence > knownSequence) {
-          knownSequence = snapshot.sequence;
+        if (snapshot.sequence > appliedSequence) {
+          appliedSequence = snapshot.sequence;
           applySnapshot(snapshot);
         }
       } catch (err) {
@@ -34,14 +45,26 @@ export function useTelemetry(): void {
         if (code !== "NO_SNAPSHOT_YET") {
           setError(err instanceof Error ? err.message : String(err));
         }
+      } finally {
+        inFlight = false;
+        // A newer tick was announced while this fetch was in flight.
+        if (!disposed && pendingSequence > appliedSequence) {
+          pendingSequence = -1;
+          void fetchSnapshot();
+        }
       }
     };
 
     void fetchSnapshot();
     const unlistenPromise = onTelemetry((payload) => {
-      if (payload.sequence > knownSequence) {
-        knownSequence = payload.sequence;
+      if (payload.sequence > appliedSequence) {
+        pendingSequence = payload.sequence;
         void fetchSnapshot();
+      }
+    });
+    unlistenPromise.catch((err: unknown) => {
+      if (!disposed) {
+        setError(`telemetry subscription failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     });
 
@@ -55,7 +78,7 @@ export function useTelemetry(): void {
     return () => {
       disposed = true;
       window.clearInterval(stalenessTimer);
-      void unlistenPromise.then((unlisten) => unlisten());
+      void unlistenPromise.then((unlisten) => unlisten()).catch(() => undefined);
     };
   }, [applySnapshot, markStale, setError, setConnecting]);
 }

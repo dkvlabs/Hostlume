@@ -142,6 +142,14 @@ export const ipc = {
     }
   },
 
+  async resetSettings(): Promise<Settings> {
+    try {
+      return await invokeValidated("reset_settings", undefined, isSettings);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
   async getDiagnostics(): Promise<DiagnosticsReport> {
     try {
       return await invokeValidated("get_diagnostics", undefined, isDiagnosticsReport);

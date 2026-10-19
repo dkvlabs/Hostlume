@@ -134,7 +134,11 @@ export function isOverviewCardPref(value: unknown): value is { id: string; visib
 
 export function isSettings(value: unknown): value is Settings {
   if (!isRecord(value)) return false;
-  if (value.schema_version !== SCHEMA_VERSION) return false;
+  // Settings carry their own schema version (migrated to current by Rust);
+  // it is unrelated to the telemetry SCHEMA_VERSION.
+  if (!Number.isInteger(value.schema_version) || (value.schema_version as number) < 1) {
+    return false;
+  }
   if (!APPEARANCES.includes(value.appearance as Appearance)) return false;
   if (typeof value.compact_mode !== "boolean") return false;
   if (!isFiniteNumber(value.polling_base_seconds)) return false;

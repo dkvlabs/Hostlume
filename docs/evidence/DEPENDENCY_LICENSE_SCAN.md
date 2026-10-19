@@ -86,3 +86,37 @@ Dependencies actually adopted by the Phase 01 code (lockfile-pinned). All checke
 ## Enforcement
 
 `deny.toml` (cargo-deny) gates Rust licenses in CI; run locally 19.10.2026: `cargo deny check licenses` → **licenses ok**. npm license review remains manual per-phase (this file); no copyleft dependency entered the frontend tree (GPL-3.0 is the project's own root LICENSE only).
+
+## Phase 09 release review (19.10.2026)
+
+Commands and exact outcomes (cargo-deny 0.20.2, pnpm 10.33.2):
+
+| Check | Command | Result |
+|---|---|---|
+| Rust advisories (RustSec, fetched live) | `cargo deny check advisories` | **ok** — 0 vulnerabilities, 0 yanked; 4 `unmaintained` notices ignored with reasons in `deny.toml` (below) |
+| Rust licenses | `cargo deny check licenses` | **ok** (allow list unchanged; 1 "license not encountered" warning for an allow-list entry no crate uses) |
+| Rust sources | `cargo deny check sources` | **ok** — crates.io only; `unknown-git`/`unknown-registry` denied |
+| Rust bans | `cargo deny check bans` | **ok** — 20 duplicate-version warnings (policy `warn`); wildcard check now passes because every workspace crate declares `publish = false` (they were previously treated as crates.io-publishable, where path deps are illegal) |
+| npm vulnerabilities | `pnpm audit` | **No known vulnerabilities found** after the ECharts upgrade below |
+| SBOM | `node scripts/generate-sbom.mjs` | `docs/release/sbom/sbom-0.1.0.cdx.json` (CycloneDX 1.5; 515 crates + 262 npm packages, 57 of them runtime) + `docs/release/sbom/README.md` license tallies |
+
+### Actioned
+
+| Package | Was | Now | Why |
+|---|---|---|---|
+| `echarts` | 6.0.0 | **6.1.0** (Apache-2.0, published 2026-05-19) | `pnpm audit`: GHSA-fgmj-fm8m-jvvx, moderate XSS in `<6.1.0`. Typecheck/lint/108 vitest tests/`pnpm build` re-run green; Compare page API (`init`/`setOption`/`resize`/`dispose`) unchanged within 6.x |
+
+### Accepted unmaintained notices (transitive, Linux build stack; re-check each phase)
+
+| Advisory | Crate | Path | Why accepted |
+|---|---|---|---|
+| RUSTSEC-2024-0370 | `proc-macro-error` 1.0.4 | `glib-macros` 0.18 ← gtk (Linux Tauri stack) | compile-time proc macro only; no runtime code shipped |
+| RUSTSEC-2026-0370 | `zvariant` 5.x | `zbus` 5.19 ← `notify-rust` (tauri-plugin-notification), `tauri-plugin-single-instance` | Linux D-Bus only; fix requires upstream plugins to move to zbus 6; no vulnerability, "unmaintained" status |
+| RUSTSEC-2026-0371 | `zbus_names` 4.x | same | same |
+| RUSTSEC-2026-0372 | `zvariant_derive` 5.x | same | same |
+
+These do not affect the macOS release candidate's runtime; they are tracked here so the Linux build (not validated in this release) inherits the review.
+
+### Native sensor SDKs
+
+None bundled: macOS sensors are read through public IOKit/`system_profiler` interfaces (ADR-0004); no vendor GPU SDKs, kernel extensions or privileged helpers are shipped (security-privacy.md §8). Nothing from the reference application (ImageTasks) is present in assets, code or SBOM.

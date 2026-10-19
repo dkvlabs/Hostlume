@@ -1,7 +1,35 @@
-# cargo-deny policy: dependency license gate (phase 01 §2 task 9).
-# The project's own crates are GPL-3.0-only (see root LICENSE); every
-# third-party dependency must carry one of the permissive licenses below.
-# New dependencies need an entry in docs/evidence/DEPENDENCY_LICENSE_SCAN.md.
+# cargo-deny policy: dependency license gate (phase 01 §2 task 9) plus the
+# phase 09 release gates (§2.8): advisories (RustSec), yanked crates and
+# source registries. The project's own crates are GPL-3.0-only (see root
+# LICENSE); every third-party dependency must carry one of the permissive
+# licenses below. New dependencies need an entry in
+# docs/evidence/DEPENDENCY_LICENSE_SCAN.md.
+
+[advisories]
+version = 2
+yanked = "deny"
+# Unmaintained (not vulnerability) notices on transitive Linux-only crates
+# pulled in by Tauri plugins. Each is ignored with its reason and tracked in
+# docs/evidence/DEPENDENCY_LICENSE_SCAN.md §Phase 09; remove the entry once
+# upstream (notify-rust / tauri-plugin-single-instance / gtk) migrates.
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: compile-time proc macro via glib-macros 0.18 (gtk, Linux build stack only); no runtime code" },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant 5.x via zbus 5.19 (notify-rust, tauri-plugin-single-instance; Linux D-Bus only); upstream must move to zbus 6" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names 4.x via zbus 5.19 (same path as RUSTSEC-2026-0370)" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5.x via zbus 5.19 (same path as RUSTSEC-2026-0370)" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace crates reference each other by path without a version; that is
+# the intended layout, not an unpinned registry dependency.
+allow-wildcard-paths = true
 
 [licenses]
 version = 2
@@ -18,6 +46,3 @@ allow = [
   "MPL-2.0",
   "CDLA-Permissive-2.0",
 ]
-
-[bans]
-multiple-versions = "warn"

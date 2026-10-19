@@ -17,6 +17,8 @@ version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-only"
 repository = "https://github.com/dkvlabs/Hostlume"
+# App-internal crates: distributed as the desktop binary, never to crates.io.
+publish = false
 
 [workspace.dependencies]
 monitor-core = { path = "crates/monitor-core" }
