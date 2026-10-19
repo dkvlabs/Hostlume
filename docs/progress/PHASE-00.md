@@ -38,10 +38,13 @@ Existing files were preserved; no prior document was modified. `docs/feature-mat
 | macOS arm64 | `ioreg -rn AppleSmartBattery` battery keys (cycles 180, design/full capacity, charging state) | PASS unprivileged | FEASIBILITY_SPIKES.md §cross-check 1 |
 | macOS arm64 | `iostat -d` per-device rates; `vm_stat`; `sysctl kern.boottime` vs sysinfo `boot_time` (identical: 1792171723) | PASS | FEASIBILITY_SPIKES.md §cross-checks 3–5 |
 | macOS arm64 | `powermetrics` without root | EXPECTED FAIL — `must be invoked as the superuser`; `smc` sampler unrecognized → root-gated thermal tooling unusable by design | FEASIBILITY_SPIKES.md §cross-check 6 |
+| macOS arm64 | Re-verification pass 19.10.2026 (phase-runner invocation): toolchain versions re-recorded (unchanged); both spike binaries re-run from the retained `/tmp/hostlume-spike` workspace | PASS — all findings reproduced; 22 sensors again; `als-temp` live-returned no reading (first-hand evidence for per-sensor null semantics) | FEASIBILITY_SPIKES.md §spikes 1–2 |
 | Windows | any build/test | NOT_RUN — no hardware/runner | RISK_REGISTER R10 |
 | Linux | any build/test | NOT_RUN — no hardware/runner | RISK_REGISTER R10 |
 
 No `cargo test`/lint suites exist yet (no workspace) — the only executable verification possible in Phase 00 was the spike, which ran and is logged with exact outputs.
+
+Link validation (phase doc §3, re-checked 19.10.2026): every local `docs/…` path referenced by the Phase 00 artifacts resolves to an existing file. The only two absent referenced paths are documented intentional absences: `docs/evidence/REFERENCE_WALKTHROUGH.md` (deliberately not created — no reference-app inspection performed, RISK_REGISTER R14) and `docs/progress/CI-BASELINE.md` (ADR-0005 names it as a Phase 01 deliverable, created at first green CI run).
 
 ## Verified sources (fetched 19.10.2026)
 
