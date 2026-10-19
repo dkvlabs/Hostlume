@@ -85,6 +85,15 @@ impl Collector for DiskIoCollector {
         PollGroup::Medium
     }
 
+    fn reset(&mut self) {
+        #[cfg(target_os = "linux")]
+        {
+            self.trackers.clear();
+            self.last_wall_ms = None;
+            self.last_mono_ms = None;
+        }
+    }
+
     fn capabilities(&self) -> Vec<MetricCapability> {
         let state = if cfg!(target_os = "linux") {
             Availability::Available

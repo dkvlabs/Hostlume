@@ -1,6 +1,6 @@
 //! Shared application state managed by Tauri.
 
-use std::sync::atomic::{AtomicU32, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
 use std::sync::{Arc, Mutex, RwLock};
 
 use monitor_core::{CapabilityReport, Clock, SystemSnapshot};
@@ -24,6 +24,11 @@ pub struct AppState {
     /// Shared with the scheduler; bumped when the report is re-probed so
     /// listeners re-render capability-dependent UI.
     pub capabilities_revision: Arc<AtomicU64>,
+    /// Sampling paused (tray toggle, phase 06 §2.9).
+    pub paused: Arc<AtomicBool>,
+    /// Tray controller; `None` only if construction failed (typed error in
+    /// diagnostics — the app keeps running without the tray).
+    pub tray: Option<std::sync::Arc<crate::tray::TrayController>>,
     pub store: Arc<SettingsStore>,
     /// Settings-backed base polling seconds, read by the scheduler each tick.
     pub polling_secs: Arc<AtomicU32>,

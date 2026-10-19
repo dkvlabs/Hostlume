@@ -145,9 +145,13 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<crate::settings::Setti
 /// are rejected with the current settings left untouched.
 #[tauri::command]
 pub fn update_settings(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     patch: SettingsPatch,
 ) -> Result<crate::settings::Settings, CommandError> {
+    let launch_at_login_changed = patch.launch_at_login.is_some();
+    let launch_at_login_value = patch.launch_at_login;
+    let tray_changed = patch.tray.is_some();
     let store = &state.store;
     let mut updated = store
         .load_settings()
@@ -162,6 +166,30 @@ pub fn update_settings(
     state
         .polling_secs
         .store(updated.polling_base_seconds, Ordering::Relaxed);
+    // Phase 06: tray configuration applies live (visibility follows
+    // `enabled`; value rows follow the toggles on the next snapshot).
+    if tray_changed {
+        if let Some(tray) = state.tray.as_ref() {
+            tray.apply_config(
+                updated.tray,
+                updated.rate_unit == crate::settings::RateUnit::Bits,
+            );
+        }
+    }
+    // Launch-at-login: the OS login item follows the persisted setting
+    // only when the user changes it — never applied silently at startup.
+    if launch_at_login_changed {
+        use tauri_plugin_autostart::ManagerExt;
+        let autostart = app.autolaunch();
+        let outcome = if launch_at_login_value.unwrap_or(false) {
+            autostart.enable()
+        } else {
+            autostart.disable()
+        };
+        if let Err(error) = outcome {
+            return Err(CommandError::store(format!("autostart: {error}")));
+        }
+    }
     Ok(updated)
 }
 

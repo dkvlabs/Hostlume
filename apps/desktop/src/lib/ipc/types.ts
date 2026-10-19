@@ -94,6 +94,15 @@ export type RateUnit = "bytes" | "bits";
 
 export type TemperatureUnit = "celsius" | "fahrenheit";
 
+/** Tray configuration (phase 06 §2.3; persisted, applied live). */
+export interface TrayConfig {
+  enabled: boolean;
+  show_cpu: boolean;
+  show_memory: boolean;
+  show_network: boolean;
+  show_title: boolean;
+}
+
 /** One graphics adapter + its displays (FX-010 `get_gpu_info`). */
 export interface GpuDisplay {
   name: string;
@@ -134,6 +143,8 @@ export interface Settings {
   rate_unit: RateUnit;
   external_lookup: ExternalLookup;
   temperature_unit: TemperatureUnit;
+  tray: TrayConfig;
+  launch_at_login: boolean;
 }
 
 export interface SettingsPatch {
@@ -147,6 +158,8 @@ export interface SettingsPatch {
   rate_unit?: RateUnit;
   external_lookup?: ExternalLookup;
   temperature_unit?: TemperatureUnit;
+  tray?: TrayConfig;
+  launch_at_login?: boolean;
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */

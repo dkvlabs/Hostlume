@@ -12,8 +12,9 @@ mod settings;
 mod settings_store;
 mod state;
 pub mod storage;
+pub mod tray;
 
-use std::sync::atomic::{AtomicU32, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64};
 use std::sync::{Arc, Mutex, RwLock};
 
 use monitor_core::{CapabilityReport, Clock, Collector};
@@ -79,8 +80,13 @@ fn read_retention_horizons(app: &tauri::AppHandle) -> (u32, u32, u32) {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
                 let _ = window.set_focus();
             }
         }))
@@ -111,10 +117,27 @@ pub fn run() {
                 })?,
             );
 
-            // History tap: every published snapshot's available numeric
-            // readings are enqueued for persistence. Drops under disk
-            // pressure are counted by the writer — never blocking collection.
+            // Tray controller (FX-015): one icon + native menu driven by
+            // the snapshot bus below — never a second polling loop.
+            let paused = Arc::new(AtomicBool::new(false));
+            let rate_bits = settings.rate_unit == crate::settings::RateUnit::Bits;
+            let tray_controller = match tray::TrayController::build(
+                handle.clone(),
+                settings.tray,
+                rate_bits,
+                paused.clone(),
+                include_bytes!("../icons/icon.png"),
+            ) {
+                Ok(controller) => Some(Arc::new(controller)),
+                Err(error) => {
+                    eprintln!("tray unavailable: {error}");
+                    None
+                }
+            };
+
+            // Snapshot tap: history persistence + tray repaint, one bus.
             let tap_writer = Arc::clone(&history_writer);
+            let tap_tray = tray_controller.clone();
             let snapshot_tap: scheduler::SnapshotTap =
                 Some(Arc::new(move |snapshot: &monitor_core::SystemSnapshot| {
                     for reading in &snapshot.metrics {
@@ -131,6 +154,9 @@ pub fn run() {
                             generation: snapshot.generation.clone(),
                             sequence: reading.monotonic_sequence,
                         });
+                    }
+                    if let Some(tray) = tap_tray.as_ref() {
+                        tray.update(snapshot);
                     }
                 }));
 
@@ -202,6 +228,8 @@ pub fn run() {
                 latest,
                 capabilities: Mutex::new(capabilities),
                 capabilities_revision: capabilities_revision.clone(),
+                paused,
+                tray: tray_controller,
                 store,
                 polling_secs,
                 diagnostics,
@@ -214,10 +242,19 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Phase 01 policy: closing the main window exits the app. The
-            // close-to-tray preference activates with the tray (Phase 06).
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                if let Some(state) = window.app_handle().try_state::<AppState>() {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let state = window.app_handle().try_state::<AppState>();
+                let close_to_tray = state
+                    .as_ref()
+                    .and_then(|state| state.store.load_settings().ok())
+                    .map(|settings| settings.close_to_tray)
+                    .unwrap_or(false);
+                if close_to_tray {
+                    // Phase 06: the tray keeps sampling alive; closing the
+                    // window hides it instead of exiting.
+                    api.prevent_close();
+                    let _ = window.hide();
+                } else if let Some(state) = state {
                     state.scheduler.stop();
                 }
             }

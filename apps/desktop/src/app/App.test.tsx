@@ -48,6 +48,8 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     rate_unit: "bytes" as const,
     external_lookup: { enabled: false, provider: "ipify", timeout_secs: 5 },
         temperature_unit: "celsius",
+        tray: { enabled: true, show_cpu: true, show_memory: true, show_network: true, show_title: true },
+        launch_at_login: false,
     ...overrides,
   };
 }

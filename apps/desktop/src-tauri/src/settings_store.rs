@@ -11,7 +11,7 @@ use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
 use crate::settings::{
-    Settings, SettingsError, SettingsV1, SettingsV2, SettingsV3, SettingsV4,
+    Settings, SettingsError, SettingsV1, SettingsV2, SettingsV3, SettingsV4, SettingsV5,
     SETTINGS_SCHEMA_VERSION,
 };
 
@@ -146,7 +146,7 @@ impl SettingsStore {
             return Ok(Settings::default());
         };
         match version {
-            1..=4 => {
+            1..=5 => {
                 // Load-time settings migration: stored preferences carry
                 // over, later additions take defaults, and the migrated row
                 // is persisted so migration happens once.
@@ -155,11 +155,16 @@ impl SettingsStore {
                     2 => serde_json::from_str::<SettingsV2>(&json)?
                         .into_v3()
                         .into_v4()
-                        .into_v5(),
+                        .into_v5()
+                        .into_v6(),
                     3 => serde_json::from_str::<SettingsV3>(&json)?
                         .into_v4()
-                        .into_v5(),
-                    _ => serde_json::from_str::<SettingsV4>(&json)?.into_v5(),
+                        .into_v5()
+                        .into_v6(),
+                    4 => serde_json::from_str::<SettingsV4>(&json)?
+                        .into_v5()
+                        .into_v6(),
+                    _ => serde_json::from_str::<SettingsV5>(&json)?.into_v6(),
                 };
                 self.save_settings(&migrated)?;
                 Ok(migrated)

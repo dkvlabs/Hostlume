@@ -40,4 +40,9 @@ pub trait Collector: Send {
     /// typed [`CollectorError`]; it must not fabricate values and must not
     /// poison other collectors' work.
     fn sample(&mut self, clock: &dyn Clock) -> Result<Vec<MetricReading>, CollectorError>;
+
+    /// Drop warm-up/rate baselines so the next [`Self::sample`] starts a new
+    /// counter baseline (used when sampling is paused and resumed — phase 06
+    /// §2.9). The default is a no-op for stateless collectors.
+    fn reset(&mut self) {}
 }

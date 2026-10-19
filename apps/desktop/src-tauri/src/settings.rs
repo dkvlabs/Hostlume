@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 5;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 6;
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -35,6 +35,32 @@ pub enum TemperatureUnit {
     #[default]
     Celsius,
     Fahrenheit,
+}
+
+/// Tray configuration (phase 06 §2.3: persisted visible indicators). The
+/// tray reads the shared snapshot bus — its "update rate" is the base
+/// polling cadence, never a second timer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TrayConfig {
+    pub enabled: bool,
+    pub show_cpu: bool,
+    pub show_memory: bool,
+    pub show_network: bool,
+    /// macOS menu-bar icon text (compact CPU percentage).
+    pub show_title: bool,
+}
+
+impl Default for TrayConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_cpu: true,
+            show_memory: true,
+            show_network: true,
+            show_title: true,
+        }
+    }
 }
 
 /// History retention bounds. 0 means "keep this tier forever"; the defaults
@@ -122,6 +148,10 @@ pub struct Settings {
     pub rate_unit: RateUnit,
     pub external_lookup: ExternalLookup,
     pub temperature_unit: TemperatureUnit,
+    pub tray: TrayConfig,
+    /// Launch at login (tauri-plugin-autostart; OS login item applied when
+    /// the setting changes — never silently at startup).
+    pub launch_at_login: bool,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -148,6 +178,8 @@ impl Default for Settings {
             rate_unit: RateUnit::default(),
             external_lookup: ExternalLookup::default(),
             temperature_unit: TemperatureUnit::default(),
+            tray: TrayConfig::default(),
+            launch_at_login: false,
         }
     }
 }
@@ -295,6 +327,64 @@ pub struct SettingsPatch {
     pub rate_unit: Option<RateUnit>,
     pub external_lookup: Option<ExternalLookup>,
     pub temperature_unit: Option<TemperatureUnit>,
+    pub tray: Option<TrayConfig>,
+    pub launch_at_login: Option<bool>,
+}
+
+/// The v5 row shape (adds temperature unit + Phase 05 overview cards;
+/// predates tray configuration and launch-at-login).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsV5 {
+    pub schema_version: u32,
+    pub appearance: Appearance,
+    pub compact_mode: bool,
+    pub polling_base_seconds: u32,
+    pub close_to_tray: bool,
+    pub locale: String,
+    pub overview_cards: Vec<OverviewCard>,
+    pub history: HistoryRetention,
+    pub rate_unit: RateUnit,
+    pub external_lookup: ExternalLookup,
+    pub temperature_unit: TemperatureUnit,
+}
+
+impl Default for SettingsV5 {
+    fn default() -> Self {
+        Self {
+            schema_version: 5,
+            appearance: Appearance::System,
+            compact_mode: false,
+            polling_base_seconds: POLLING_DEFAULT_SECS,
+            close_to_tray: false,
+            locale: DEFAULT_LOCALE.to_string(),
+            overview_cards: default_overview_cards(),
+            history: HistoryRetention::default(),
+            rate_unit: RateUnit::default(),
+            external_lookup: ExternalLookup::default(),
+            temperature_unit: TemperatureUnit::default(),
+        }
+    }
+}
+
+impl SettingsV5 {
+    pub fn into_v6(self) -> Settings {
+        Settings {
+            schema_version: SETTINGS_SCHEMA_VERSION,
+            appearance: self.appearance,
+            compact_mode: self.compact_mode,
+            polling_base_seconds: self.polling_base_seconds,
+            close_to_tray: self.close_to_tray,
+            locale: self.locale,
+            overview_cards: self.overview_cards,
+            history: self.history,
+            rate_unit: self.rate_unit,
+            external_lookup: self.external_lookup,
+            temperature_unit: self.temperature_unit,
+            tray: TrayConfig::default(),
+            launch_at_login: false,
+        }
+    }
 }
 
 /// The v4 row shape (adds display preferences; predates the temperature
@@ -346,7 +436,7 @@ impl SettingsV4 {
     /// Carry every v4 field forward; the Phase 05 additions take defaults
     /// and missing overview cards are appended in canonical order so user
     /// layout choices survive the migration.
-    pub fn into_v5(self) -> Settings {
+    pub fn into_v5(self) -> SettingsV5 {
         let mut overview_cards = self.overview_cards;
         for id in OVERVIEW_CARD_IDS {
             if !overview_cards.iter().any(|card| &card.id == id) {
@@ -356,8 +446,8 @@ impl SettingsV4 {
                 });
             }
         }
-        Settings {
-            schema_version: SETTINGS_SCHEMA_VERSION,
+        SettingsV5 {
+            schema_version: 5,
             appearance: self.appearance,
             compact_mode: self.compact_mode,
             polling_base_seconds: self.polling_base_seconds,
@@ -500,6 +590,7 @@ impl SettingsV1 {
         .into_v3()
         .into_v4()
         .into_v5()
+        .into_v6()
     }
 }
 
@@ -665,7 +756,7 @@ mod tests {
             }],
             ..SettingsV2::default()
         };
-        let migrated = v2.into_v3().into_v4().into_v5();
+        let migrated = v2.into_v3().into_v4().into_v5().into_v6();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.appearance, Appearance::Light);
@@ -674,6 +765,21 @@ mod tests {
             migrated.history.raw_hours,
             monitor_history::DEFAULT_RAW_HOURS
         );
+    }
+
+    #[test]
+    fn v5_settings_migrate_to_v6_with_tray_defaults() {
+        let v5 = SettingsV5 {
+            appearance: Appearance::Dark,
+            polling_base_seconds: 7,
+            ..SettingsV5::default()
+        };
+        let migrated = v5.into_v6();
+        migrated.validate().expect("migrated settings valid");
+        assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.polling_base_seconds, 7);
+        assert!(migrated.tray.enabled, "tray defaults on");
+        assert!(!migrated.launch_at_login, "opt-in stays off");
     }
 
     #[test]
@@ -686,7 +792,7 @@ mod tests {
             }],
             ..SettingsV4::default()
         };
-        let migrated = v4.into_v5();
+        let migrated = v4.into_v5().into_v6();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert!(!migrated.overview_cards[0].visible);

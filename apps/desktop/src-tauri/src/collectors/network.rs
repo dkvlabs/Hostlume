@@ -74,6 +74,14 @@ impl Collector for NetworkCollector {
         PollGroup::Fast
     }
 
+    fn reset(&mut self) {
+        // Clear rate trackers and wall/mono baselines: the first sample
+        // after resume re-warms instead of averaging across the pause.
+        self.states.clear();
+        self.last_wall_ms = None;
+        self.last_mono_ms = None;
+    }
+
     fn capabilities(&self) -> Vec<MetricCapability> {
         [
             families::NET_INTERFACE_RX_TOTAL,

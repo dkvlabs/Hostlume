@@ -90,12 +90,21 @@ struct Registered {
 
 pub struct SchedulerHandle {
     stop: watch::Sender<bool>,
+    pause: watch::Sender<bool>,
 }
 
 impl SchedulerHandle {
     /// Ask the loop to finish after the current tick; never blocks.
     pub fn stop(&self) {
         let _ = self.stop.send(true);
+    }
+
+    /// Pause/resume sampling (phase 06 §2.9: tray `Pause` stops sampling;
+    /// `Resume` restarts with fresh collector baselines). Pausing never
+    /// blocks and leaves the last published snapshot in place — the UI's
+    /// staleness marking takes over while paused.
+    pub fn set_paused(&self, paused: bool) {
+        let _ = self.pause.send(paused);
     }
 }
 
@@ -160,6 +169,7 @@ pub fn spawn_engine(
     slow_interval: Duration,
 ) -> SchedulerHandle {
     let (stop_tx, stop_rx) = watch::channel(false);
+    let (pause_tx, pause_rx) = watch::channel(false);
     tauri::async_runtime::spawn(run_loop(
         Engine {
             host_id,
@@ -184,8 +194,12 @@ pub fn spawn_engine(
             slow_interval,
         },
         stop_rx,
+        pause_rx,
     ));
-    SchedulerHandle { stop: stop_tx }
+    SchedulerHandle {
+        stop: stop_tx,
+        pause: pause_tx,
+    }
 }
 
 struct Engine {
@@ -263,6 +277,15 @@ impl Engine {
                     );
                 }
             }
+        }
+    }
+
+    /// Hand every collector a fresh baseline (pause → resume) and forget
+    /// owned keys so the next tick repopulates from scratch.
+    fn reset_collectors(&mut self) {
+        for registered in &mut self.collectors {
+            registered.collector.reset();
+            registered.owned.clear();
         }
     }
 
@@ -362,14 +385,36 @@ fn group_name(group: PollGroup) -> &'static str {
     }
 }
 
-async fn run_loop(mut engine: Engine, mut stop_rx: watch::Receiver<bool>) {
+async fn run_loop(
+    mut engine: Engine,
+    mut stop_rx: watch::Receiver<bool>,
+    mut pause_rx: watch::Receiver<bool>,
+) {
     let now = std::time::Instant::now();
     let mut next_fast = now; // fast fires immediately: warm-up states first
     let mut next_medium = now + engine.medium_interval;
     let mut next_slow = now + engine.slow_interval;
+    let mut was_paused = false;
     loop {
         if *stop_rx.borrow() {
             break;
+        }
+        let paused = *pause_rx.borrow();
+        if paused {
+            // Sampling paused: no ticks, no publishes. The last snapshot
+            // stays available; consumers mark it stale by timestamp.
+            was_paused = true;
+            tokio::select! {
+                _ = pause_rx.changed() => {}
+                _ = stop_rx.changed() => {}
+            }
+            continue;
+        }
+        if was_paused {
+            // Resume: fresh counter baselines, not averages across the
+            // paused interval (phase 06 §3).
+            engine.reset_collectors();
+            was_paused = false;
         }
         let now = std::time::Instant::now();
         let mut published = false;
@@ -395,6 +440,7 @@ async fn run_loop(mut engine: Engine, mut stop_rx: watch::Receiver<bool>) {
         let next_due = next_fast.min(next_medium).min(next_slow);
         tokio::select! {
             _ = tokio::time::sleep_until(tokio::time::Instant::from_std(next_due)) => {}
+            _ = pause_rx.changed() => {}
             _ = stop_rx.changed() => {}
         }
     }
@@ -620,6 +666,88 @@ mod tests {
             .find(|r| r.metric_id == monitor_core::families::MEMORY_PHYSICAL_TOTAL)
             .expect("memory total present");
         assert!(matches!(mem.value, Some(MetricValue::Number(n)) if n > 0.0));
+    }
+
+    /// Reset-counting stub: verifies phase 06 §3's "Resume restarts with
+    /// new counter baseline" semantics.
+    struct ResetAwareCollector {
+        id: &'static str,
+        group: PollGroup,
+        resets: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    }
+
+    impl Collector for ResetAwareCollector {
+        fn id(&self) -> &'static str {
+            self.id
+        }
+        fn poll_group(&self) -> PollGroup {
+            self.group
+        }
+        fn capabilities(&self) -> Vec<MetricCapability> {
+            Vec::new()
+        }
+        fn sample(&mut self, clock: &dyn Clock) -> Result<Vec<MetricReading>, CollectorError> {
+            Ok(vec![reading_stub(
+                &format!("{}.value", self.id),
+                "entity-1",
+                1,
+                clock,
+            )])
+        }
+        fn reset(&mut self) {
+            self.resets
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    #[tokio::test]
+    async fn pause_stops_publishing_and_resume_resets_baselines() {
+        let latest: Arc<RwLock<Option<SystemSnapshot>>> = Arc::default();
+        let diagnostics: DiagnosticsMap = Arc::default();
+        let emitted = Arc::new(AtomicU64::new(0));
+        let emitted_for_closure = emitted.clone();
+        let resets = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let handle = spawn_engine(
+            "h".into(),
+            "g".into(),
+            vec![Box::new(ResetAwareCollector {
+                id: "reset-aware",
+                group: PollGroup::Fast,
+                resets: resets.clone(),
+            })],
+            latest.clone(),
+            Arc::new(AtomicU64::new(1)),
+            diagnostics,
+            Arc::new(move |_| {
+                emitted_for_closure.fetch_add(1, Ordering::Relaxed);
+            }),
+            None,
+            Arc::new(|| Duration::from_millis(10)),
+            Duration::from_secs(60),
+            Duration::from_secs(60),
+        );
+
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        let before_pause = emitted.load(Ordering::Relaxed);
+        assert!(before_pause >= 2, "publishing before pause");
+
+        handle.set_paused(true);
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        let while_paused = emitted.load(Ordering::Relaxed);
+        assert_eq!(before_pause, while_paused, "no publishes while paused");
+
+        handle.set_paused(false);
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert!(
+            emitted.load(Ordering::Relaxed) > while_paused,
+            "publishing resumes after unpause"
+        );
+        assert_eq!(
+            resets.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "exactly one baseline reset on resume"
+        );
+        handle.stop();
     }
 
     #[tokio::test]

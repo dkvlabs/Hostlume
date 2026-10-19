@@ -179,6 +179,50 @@ export function SettingsPage() {
               <span className="text-xs text-muted">{t("settings.closeToTrayHint")}</span>
             </div>
           </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[10rem_1fr]">
+            <Label htmlFor="setting-launch-login">{t("settings.launchAtLogin")}</Label>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="setting-launch-login"
+                checked={settings.launch_at_login}
+                onCheckedChange={(checked) => void patch({ launch_at_login: checked })}
+              />
+              <span className="text-xs text-muted">{t("settings.launchAtLoginHint")}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("settings.tray")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <p className="text-xs text-muted">{t("settings.trayHint")}</p>
+          {(
+            [
+              ["setting-tray-enabled", "enabled", "settings.tray.enabled"],
+              ["setting-tray-cpu", "show_cpu", "settings.tray.showCpu"],
+              ["setting-tray-memory", "show_memory", "settings.tray.showMemory"],
+              ["setting-tray-network", "show_network", "settings.tray.showNetwork"],
+              ["setting-tray-title", "show_title", "settings.tray.showTitle"],
+            ] as const
+          ).map(([id, key, labelKey]) => (
+            <div
+              key={id}
+              className="grid items-center gap-2 sm:grid-cols-[10rem_1fr]"
+            >
+              <Label htmlFor={id}>{t(labelKey)}</Label>
+              <Switch
+                id={id}
+                checked={settings.tray[key]}
+                onCheckedChange={(checked) =>
+                  void patch({ tray: { ...settings.tray, [key]: checked } })
+                }
+              />
+            </div>
+          ))}
         </CardContent>
       </Card>
 

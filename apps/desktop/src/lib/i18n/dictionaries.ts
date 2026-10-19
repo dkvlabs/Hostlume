@@ -250,6 +250,17 @@ export const en = {
   "settings.temperatureUnit": "Temperature unit",
   "settings.temperatureUnit.celsius": "Celsius (°C)",
   "settings.temperatureUnit.fahrenheit": "Fahrenheit (°F)",
+
+  "settings.launchAtLogin": "Launch at login",
+  "settings.launchAtLoginHint": "Registers the OS login item for APP_NAME.",
+  "settings.tray": "Menu bar / tray",
+  "settings.trayHint":
+    "The tray icon reads the same live snapshot as the app — no separate polling. Hide the icon entirely with the first toggle.",
+  "settings.tray.enabled": "Show tray icon",
+  "settings.tray.showCpu": "Show CPU row",
+  "settings.tray.showMemory": "Show memory row",
+  "settings.tray.showNetwork": "Show network row",
+  "settings.tray.showTitle": "Icon shows CPU %",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -498,4 +509,15 @@ export const ro: Dictionary = {
   "settings.temperatureUnit": "Unitate de temperatură",
   "settings.temperatureUnit.celsius": "Celsius (°C)",
   "settings.temperatureUnit.fahrenheit": "Fahrenheit (°F)",
+
+  "settings.launchAtLogin": "Lansare la autentificare",
+  "settings.launchAtLoginHint": "Înregistrează elementul de login al sistemului pentru APP_NAME.",
+  "settings.tray": "Bară de meniu / tray",
+  "settings.trayHint":
+    "Iconița din tray citește același flux de date ca aplicația — fără un al doilea ciclu de sondare. Ascunde complet iconița cu primul comutator.",
+  "settings.tray.enabled": "Afișează iconița tray",
+  "settings.tray.showCpu": "Afișează rândul CPU",
+  "settings.tray.showMemory": "Afișează rândul memorie",
+  "settings.tray.showNetwork": "Afișează rândul rețea",
+  "settings.tray.showTitle": "Iconița afișează CPU %",
 };

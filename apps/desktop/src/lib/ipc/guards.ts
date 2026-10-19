@@ -144,6 +144,18 @@ export function isSettings(value: unknown): value is Settings {
   }
   if (!["bytes", "bits"].includes(value.rate_unit as string)) return false;
   if (!["celsius", "fahrenheit"].includes(value.temperature_unit as string)) return false;
+  const tray = value.tray;
+  if (!isRecord(tray)) return false;
+  if (
+    typeof tray.enabled !== "boolean" ||
+    typeof tray.show_cpu !== "boolean" ||
+    typeof tray.show_memory !== "boolean" ||
+    typeof tray.show_network !== "boolean" ||
+    typeof tray.show_title !== "boolean"
+  ) {
+    return false;
+  }
+  if (typeof value.launch_at_login !== "boolean") return false;
   const lookup = value.external_lookup;
   if (!isRecord(lookup)) return false;
   return (

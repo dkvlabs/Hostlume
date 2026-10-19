@@ -81,6 +81,12 @@ impl Collector for CpuCollector {
         Self::family_capabilities(self.system.cpus().len())
     }
 
+    fn reset(&mut self) {
+        // Re-enter warm-up so the resumed baseline is fresh, not averaged
+        // across the paused interval.
+        self.warmed_up = false;
+    }
+
     fn sample(&mut self, clock: &dyn Clock) -> Result<Vec<MetricReading>, CollectorError> {
         self.system.refresh_cpu_all();
         if !self.warmed_up {

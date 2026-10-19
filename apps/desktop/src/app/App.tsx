@@ -62,6 +62,21 @@ export function App() {
     void loadSettings();
   }, [loadSettings]);
 
+  // Tray "Settings…" deep-links into the settings page (phase 06 §2.2).
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    void import("@tauri-apps/api/event").then(({ listen }) =>
+      listen<string>("navigate://page", (event) => {
+        if (event.payload === "settings") {
+          setPage("settings");
+        }
+      })
+    ).then((unlisten) => {
+      dispose = unlisten;
+    });
+    return () => dispose?.();
+  }, []);
+
   // Theme + density + language side effects (persistence lives in SQLite;
   // this reflects the loaded settings onto the document).
   useEffect(() => {
