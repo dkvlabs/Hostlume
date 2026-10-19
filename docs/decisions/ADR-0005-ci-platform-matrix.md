@@ -40,3 +40,14 @@ Phase 01 must add: workspace CI workflow file, per-OS dependency setup steps, ar
 ## Follow-up
 
 Verify runner labels/images and macOS Intel availability in the first week of Phase 01; add a `docs/progress/CI-BASELINE.md` record with the first green run IDs. Manual hardware matrix (testing-qa.md §3) is recruited per phase: battery-present vs battery-absent hosts before Phase 05, GNOME/KDE Wayland sessions before Phase 06.
+
+## Amendment 1 — Phase 01 runner-label verification (19.10.2026)
+
+Per the follow-up above, labels were re-verified against the official runner-images README (`raw.githubusercontent.com/actions/runner-images/main/README.md`, fetched 19.10.2026):
+
+- `macos-14` is **deprecated** (upstream issue #13518) → matrix uses **`macos-15`** (arm64).
+- Windows: **`windows-2025`** (current `windows-latest`); `windows-2022` still available as fallback.
+- Linux: **`ubuntu-24.04`**; `ubuntu-22.04` still offered but aging, `ubuntu-26.04` too new for WebKitGTK 4.1 packaging stability.
+- macOS Intel: no `macos-13` offer remains on the current list → Intel macOS stays **NOT validated** (SUPPORTED_TARGETS.md unchanged).
+
+`.github/workflows/ci.yml` implements: `rust-checks` (fmt/clippy/test × 3 OS), `frontend-checks`, `desktop-debug-build` (tauri build debug × 3 OS), `dependency-licenses` (cargo-deny, verified locally 19.10.2026: `licenses ok`). Windows/Linux rows in SUPPORTED_TARGETS.md flip to "CI-validated (headless)" only after the first green run on this repo's remote (CI-BASELINE.md records the run IDs then).
