@@ -1,6 +1,6 @@
 //! Shared application state managed by Tauri.
 
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Arc, Mutex, RwLock};
 
 use monitor_core::{CapabilityReport, Clock, SystemSnapshot};
@@ -18,7 +18,12 @@ pub struct AppState {
     /// Latest published snapshot. Until the scheduler's first tick this is
     /// `None`: the UI renders its honest "no sample yet" state, never zeros.
     pub latest: Arc<RwLock<Option<SystemSnapshot>>>,
-    pub capabilities: CapabilityReport,
+    /// Merged capability report. Behind a mutex so the explicit re-probe
+    /// command can refresh it; consumers get a consistent clone.
+    pub capabilities: Mutex<CapabilityReport>,
+    /// Shared with the scheduler; bumped when the report is re-probed so
+    /// listeners re-render capability-dependent UI.
+    pub capabilities_revision: Arc<AtomicU64>,
     pub store: Arc<SettingsStore>,
     /// Settings-backed base polling seconds, read by the scheduler each tick.
     pub polling_secs: Arc<AtomicU32>,

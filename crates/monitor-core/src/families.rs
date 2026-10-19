@@ -54,6 +54,14 @@ pub const BATTERY_CHARGE: &str = "battery.charge";
 pub const BATTERY_CYCLES: &str = "battery.cycles";
 pub const BLUETOOTH_DEVICE_CHARGE: &str = "bluetooth.device.charge";
 
+// Phase 05 additions: battery detail and Bluetooth device identity. These
+// ids may gain families, but existing ids must never change meaning.
+pub const BATTERY_STATUS: &str = "battery.status";
+pub const BATTERY_HEALTH: &str = "battery.health";
+pub const BATTERY_TIME_REMAINING: &str = "battery.time_remaining";
+pub const BATTERY_POWER_DRAW: &str = "battery.power_draw";
+pub const BLUETOOTH_DEVICE_NAME: &str = "bluetooth.device.name";
+
 /// Every metric family the product roadmap covers. Platform collectors
 /// report capabilities against this list so "we can't measure X" is always
 /// an explicit row, never an absence.
@@ -97,5 +105,10 @@ pub const ALL_FAMILIES: &[&str] = &[
     SENSOR_FAN_SPEED,
     BATTERY_CHARGE,
     BATTERY_CYCLES,
+    BATTERY_STATUS,
+    BATTERY_HEALTH,
+    BATTERY_TIME_REMAINING,
+    BATTERY_POWER_DRAW,
     BLUETOOTH_DEVICE_CHARGE,
+    BLUETOOTH_DEVICE_NAME,
 ];

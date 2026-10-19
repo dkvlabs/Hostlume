@@ -21,19 +21,35 @@ use tauri::Manager;
 
 use crate::state::AppState;
 
-/// Aggregate the capability report from the platform adapters. Rows the
-/// current host cannot own (cross-compiled `WRONG_PLATFORM` skeletons) are
-/// dropped; what remains is this build's honest capability set.
-fn build_capability_report(host_id: &str, generated_at_utc: String) -> CapabilityReport {
+/// Aggregate the user-facing capability report (FX-021). Every collector
+/// speaks for the families it owns — including `unsupported` rows with
+/// reasons — and cross-compiled `WRONG_PLATFORM` rows are dropped. Each
+/// metric family appears exactly once, from the source that probes it.
+pub(crate) fn build_capability_report(host_id: &str, generated_at_utc: String) -> CapabilityReport {
     let mut collectors: Vec<Box<dyn Collector>> = vec![
+        Box::new(collectors::CpuCollector::new()),
+        Box::new(collectors::MemoryCollector::new()),
+        Box::new(collectors::HostCollector::new()),
+        Box::new(collectors::DisksCollector::new()),
+        Box::new(collectors::NetworkCollector::new()),
+        Box::new(collectors::DiskIoCollector::new()),
+        Box::new(collectors::SensorsCollector::new()),
+        Box::new(collectors::BatteryCollector::new()),
+        Box::new(collectors::BluetoothCollector::new()),
+        Box::new(collectors::GpuCollector::new()),
+        // Platform adapters claim nothing natively; their cross-compile
+        // rows are filtered below (compile guard, see ADR-0006).
         Box::new(monitor_platform_macos::PlatformCollector::new()),
         Box::new(monitor_platform_windows::PlatformCollector::new()),
         Box::new(monitor_platform_linux::PlatformCollector::new()),
     ];
     let mut report = CapabilityReport::new(host_id, generated_at_utc);
+    let mut seen = std::collections::HashSet::new();
     for collector in &mut collectors {
         for capability in collector.capabilities() {
-            if capability.reason_code.as_deref() != Some("WRONG_PLATFORM") {
+            if capability.reason_code.as_deref() != Some("WRONG_PLATFORM")
+                && seen.insert(capability.metric_id.clone())
+            {
                 report.capabilities.push(capability);
             }
         }
@@ -184,7 +200,8 @@ pub fn run() {
                 host_id: host_id.clone(),
                 generation: generation.clone(),
                 latest,
-                capabilities,
+                capabilities: Mutex::new(capabilities),
+                capabilities_revision: capabilities_revision.clone(),
                 store,
                 polling_secs,
                 diagnostics,
@@ -208,6 +225,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
             commands::get_capabilities,
+            commands::reprobe_capabilities,
+            commands::get_gpu_info,
             commands::get_settings,
             commands::update_settings,
             commands::get_diagnostics,
@@ -233,4 +252,40 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The user-facing capability report must cover every metric family in
+    /// the contract exactly once, with no cross-compile leaks (FX-021).
+    /// Hardware-conditional families appear as reasoned `unsupported` rows
+    /// rather than absences.
+    #[test]
+    fn merged_capability_report_covers_every_family_exactly_once() {
+        let report = build_capability_report("test-host", "2026-10-19T00:00:00Z".to_string());
+        let mut actual: Vec<&str> = report
+            .capabilities
+            .iter()
+            .map(|capability| capability.metric_id.as_str())
+            .collect();
+        actual.sort_unstable();
+        let mut expected: Vec<&str> = monitor_core::families::ALL_FAMILIES.to_vec();
+        expected.sort_unstable();
+        assert_eq!(actual, expected, "one row per family, no extras");
+        assert!(report
+            .capabilities
+            .iter()
+            .all(|c| c.reason_code.as_deref() != Some(monitor_core::reasons::WRONG_PLATFORM)));
+        // Every row carries a source label, and every *unsupported* row
+        // carries an explanation — the honesty requirement; available rows
+        // may be bare.
+        assert!(report.capabilities.iter().all(|c| !c.source.is_empty()));
+        assert!(report.capabilities.iter().all(|c| c.state
+            != monitor_core::Availability::Unsupported
+            || c.explanation
+                .as_deref()
+                .is_some_and(|text| !text.is_empty())));
+    }
 }

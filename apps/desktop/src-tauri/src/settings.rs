@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 4;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 5;
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -22,7 +22,20 @@ pub const SUPPORTED_LOCALES: &[&str] = &["en", "ro"];
 pub const DEFAULT_LOCALE: &str = "en";
 
 /// Overview card ids (FX-005). Order in `overview_cards` is display order.
-pub const OVERVIEW_CARD_IDS: &[&str] = &["cpu", "memory", "storage", "network", "host"];
+/// Phase 05 adds the hardware-conditional cards; the UI auto-hides them
+/// behind capability notices when their data is unsupported (design.md §5).
+pub const OVERVIEW_CARD_IDS: &[&str] = &[
+    "cpu", "memory", "storage", "network", "host", "gpu", "sensors", "battery",
+];
+
+/// Temperature display unit (design.md §9: °C/°F setting).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TemperatureUnit {
+    #[default]
+    Celsius,
+    Fahrenheit,
+}
 
 /// History retention bounds. 0 means "keep this tier forever"; the defaults
 /// mirror the contract proposal (raw 24h, 1m 30d, 1h 365d).
@@ -108,6 +121,7 @@ pub struct Settings {
     pub history: HistoryRetention,
     pub rate_unit: RateUnit,
     pub external_lookup: ExternalLookup,
+    pub temperature_unit: TemperatureUnit,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -133,6 +147,7 @@ impl Default for Settings {
             history: HistoryRetention::default(),
             rate_unit: RateUnit::default(),
             external_lookup: ExternalLookup::default(),
+            temperature_unit: TemperatureUnit::default(),
         }
     }
 }
@@ -240,6 +255,9 @@ impl Settings {
         if let Some(rate_unit) = patch.rate_unit {
             self.rate_unit = rate_unit;
         }
+        if let Some(temperature_unit) = patch.temperature_unit {
+            self.temperature_unit = temperature_unit;
+        }
         if let Some(external_lookup) = patch.external_lookup {
             self.external_lookup = external_lookup;
         }
@@ -276,6 +294,82 @@ pub struct SettingsPatch {
     pub history: Option<HistoryRetention>,
     pub rate_unit: Option<RateUnit>,
     pub external_lookup: Option<ExternalLookup>,
+    pub temperature_unit: Option<TemperatureUnit>,
+}
+
+/// The v4 row shape (adds display preferences; predates the temperature
+/// unit and the Phase 05 overview cards).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsV4 {
+    pub schema_version: u32,
+    pub appearance: Appearance,
+    pub compact_mode: bool,
+    pub polling_base_seconds: u32,
+    pub close_to_tray: bool,
+    pub locale: String,
+    pub overview_cards: Vec<OverviewCard>,
+    pub history: HistoryRetention,
+    pub rate_unit: RateUnit,
+    pub external_lookup: ExternalLookup,
+}
+
+impl Default for SettingsV4 {
+    fn default() -> Self {
+        Self {
+            schema_version: 4,
+            appearance: Appearance::System,
+            compact_mode: false,
+            polling_base_seconds: POLLING_DEFAULT_SECS,
+            close_to_tray: false,
+            locale: DEFAULT_LOCALE.to_string(),
+            overview_cards: default_overview_cards_v4(),
+            history: HistoryRetention::default(),
+            rate_unit: RateUnit::default(),
+            external_lookup: ExternalLookup::default(),
+        }
+    }
+}
+
+/// The v4-era card list (before the gpu/sensors/battery cards existed).
+fn default_overview_cards_v4() -> Vec<OverviewCard> {
+    ["cpu", "memory", "storage", "network", "host"]
+        .iter()
+        .map(|id| OverviewCard {
+            id: (*id).to_string(),
+            visible: true,
+        })
+        .collect()
+}
+
+impl SettingsV4 {
+    /// Carry every v4 field forward; the Phase 05 additions take defaults
+    /// and missing overview cards are appended in canonical order so user
+    /// layout choices survive the migration.
+    pub fn into_v5(self) -> Settings {
+        let mut overview_cards = self.overview_cards;
+        for id in OVERVIEW_CARD_IDS {
+            if !overview_cards.iter().any(|card| &card.id == id) {
+                overview_cards.push(OverviewCard {
+                    id: (*id).to_string(),
+                    visible: true,
+                });
+            }
+        }
+        Settings {
+            schema_version: SETTINGS_SCHEMA_VERSION,
+            appearance: self.appearance,
+            compact_mode: self.compact_mode,
+            polling_base_seconds: self.polling_base_seconds,
+            close_to_tray: self.close_to_tray,
+            locale: self.locale,
+            overview_cards,
+            history: self.history,
+            rate_unit: self.rate_unit,
+            external_lookup: self.external_lookup,
+            temperature_unit: TemperatureUnit::default(),
+        }
+    }
 }
 
 /// The v3 row shape (adds history retention; predates display prefs).
@@ -308,9 +402,9 @@ impl Default for SettingsV3 {
 }
 
 impl SettingsV3 {
-    pub fn into_v4(self) -> Settings {
-        Settings {
-            schema_version: SETTINGS_SCHEMA_VERSION,
+    pub fn into_v4(self) -> SettingsV4 {
+        SettingsV4 {
+            schema_version: 4,
             appearance: self.appearance,
             compact_mode: self.compact_mode,
             polling_base_seconds: self.polling_base_seconds,
@@ -405,6 +499,7 @@ impl SettingsV1 {
         }
         .into_v3()
         .into_v4()
+        .into_v5()
     }
 }
 
@@ -475,13 +570,13 @@ mod tests {
                 visible: true,
             },
             OverviewCard {
-                id: "gpu".into(),
+                id: "definitely-not-a-card".into(),
                 visible: true,
             },
         ];
         assert!(matches!(
             s.validate(),
-            Err(SettingsError::UnknownOverviewCard { id } ) if id == "gpu"
+            Err(SettingsError::UnknownOverviewCard { id } ) if id == "definitely-not-a-card"
         ));
         s.overview_cards = vec![
             OverviewCard {
@@ -570,7 +665,7 @@ mod tests {
             }],
             ..SettingsV2::default()
         };
-        let migrated = v2.into_v3().into_v4();
+        let migrated = v2.into_v3().into_v4().into_v5();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.appearance, Appearance::Light);
@@ -579,6 +674,47 @@ mod tests {
             migrated.history.raw_hours,
             monitor_history::DEFAULT_RAW_HOURS
         );
+    }
+
+    #[test]
+    fn v4_settings_migrate_to_v5_appending_new_cards() {
+        let v4 = SettingsV4 {
+            appearance: Appearance::Dark,
+            overview_cards: vec![OverviewCard {
+                id: "cpu".into(),
+                visible: false,
+            }],
+            ..SettingsV4::default()
+        };
+        let migrated = v4.into_v5();
+        migrated.validate().expect("migrated settings valid");
+        assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert!(!migrated.overview_cards[0].visible);
+        // User order preserved; Phase 05 cards appended in canonical order.
+        let ids: Vec<&str> = migrated
+            .overview_cards
+            .iter()
+            .map(|card| card.id.as_str())
+            .collect();
+        for required in ["gpu", "sensors", "battery"] {
+            assert!(ids.contains(&required), "missing card {required}");
+        }
+        assert_eq!(
+            migrated.temperature_unit,
+            TemperatureUnit::default(),
+            "new display preference takes its default"
+        );
+    }
+
+    #[test]
+    fn temperature_unit_patch_applies() {
+        let mut s = Settings::default();
+        s.apply_patch(SettingsPatch {
+            temperature_unit: Some(TemperatureUnit::Fahrenheit),
+            ..Default::default()
+        });
+        s.validate().expect("patched settings valid");
+        assert_eq!(s.temperature_unit, TemperatureUnit::Fahrenheit);
     }
 
     #[test]

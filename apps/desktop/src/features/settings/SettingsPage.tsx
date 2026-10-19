@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { LOCALES, useT } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/dictionaries";
 import { ipc } from "@/lib/ipc/client";
-import type { Appearance } from "@/lib/ipc/types";
+import type { Appearance, TemperatureUnit } from "@/lib/ipc/types";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 /** Mirrors apps/desktop/src-tauri/src/settings.rs safe bounds. */
@@ -91,6 +91,30 @@ export function SettingsPage() {
                     {locale === "en" ? "English" : "Română"}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid items-center gap-2 sm:grid-cols-[10rem_1fr]">
+            <Label htmlFor="setting-temperature-unit">
+              {t("settings.temperatureUnit")}
+            </Label>
+            <Select
+              value={settings.temperature_unit}
+              onValueChange={(value) =>
+                void patch({ temperature_unit: value as TemperatureUnit })
+              }
+            >
+              <SelectTrigger id="setting-temperature-unit" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="celsius">
+                  {t("settings.temperatureUnit.celsius")}
+                </SelectItem>
+                <SelectItem value="fahrenheit">
+                  {t("settings.temperatureUnit.fahrenheit")}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

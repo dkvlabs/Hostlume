@@ -119,6 +119,12 @@ pub fn spawn(
         Box::new(collectors::HostCollector::new()),
         Box::new(collectors::DisksCollector::new()),
         Box::new(collectors::DiskIoCollector::new()),
+        // Phase 05 hardware-conditional collectors: sensors (10 s), then
+        // battery/Bluetooth/GPU on the slow 60 s cadence (phase 05 §2.7).
+        Box::new(collectors::SensorsCollector::new()),
+        Box::new(collectors::BatteryCollector::new()),
+        Box::new(collectors::BluetoothCollector::new()),
+        Box::new(collectors::GpuCollector::new()),
     ];
     let fast_interval: IntervalSource =
         Arc::new(move || Duration::from_secs(polling_secs.load(Ordering::Relaxed).max(1) as u64));

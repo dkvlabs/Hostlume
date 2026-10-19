@@ -47,6 +47,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     history: { raw_hours: 24, rollup_1m_days: 30, rollup_1h_days: 365 },
     rate_unit: "bytes" as const,
     external_lookup: { enabled: false, provider: "ipify", timeout_secs: 5 },
+        temperature_unit: "celsius",
     ...overrides,
   };
 }
@@ -93,12 +94,13 @@ describe("App shell", () => {
     expect(screen.getByText(/Collecting|No processes/i)).toBeInTheDocument();
   });
 
-  it("later-phase pages state that they are not implemented yet", async () => {
+  it("Sensors page renders the sensors screen (phase 05)", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: /Sensors/ }));
-    expect(await screen.findByText("Not implemented yet")).toBeInTheDocument();
-    expect(screen.getByTestId("not-implemented")).toBeInTheDocument();
+    // The screen's tablist replaces the old placeholder.
+    expect(await screen.findByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Capabilities" })).toBeInTheDocument();
   });
 
   it("Storage page shows the scan controls (phase 04)", async () => {

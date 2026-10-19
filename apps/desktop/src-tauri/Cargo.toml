@@ -35,3 +35,11 @@ monitor-storage = { workspace = true }
 monitor-platform-macos = { workspace = true }
 monitor-platform-windows = { workspace = true }
 monitor-platform-linux = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = "0.3.2"
+objc2-io-kit = "0.3.2"
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Power"] }

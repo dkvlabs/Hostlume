@@ -20,6 +20,14 @@ export function readingsFor(snapshot: SystemSnapshot | null, metricId: string): 
   return snapshot ? snapshot.metrics.filter((m) => m.metric_id === metricId) : [];
 }
 
+/** First reading of a family regardless of entity (single-instance metrics). */
+export function firstReading(
+  snapshot: SystemSnapshot | null,
+  metricId: string,
+): MetricReading | undefined {
+  return readingsFor(snapshot, metricId)[0];
+}
+
 /** Numeric value of a reading, or null unless available+finite. */
 export function numericValue(reading: MetricReading | undefined): number | null {
   if (!reading || reading.availability !== "available") return null;
@@ -46,7 +54,28 @@ export function entityLabel(entityId: string): string {
     return lastColon === -1 ? rest : rest.slice(0, lastColon);
   }
   if (entityId.startsWith("vol:")) return entityId.slice("vol:".length);
+  // Phase 05 entities: sensor slugs and fan ids keep readable forms; the
+  // hashed Bluetooth id falls back to the device-name reading in the UI.
+  if (entityId.startsWith("sensor:")) {
+    const slug = entityId.slice("sensor:".length);
+    return slug
+      .split("_")
+      .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+      .join(" ");
+  }
+  if (entityId.startsWith("fan:")) {
+    // fan:<chip>:<index> → "<chip> fan <index>"
+    const parts = entityId.slice("fan:".length).split(":");
+    return parts.length === 2 ? `${parts[0]} fan ${parts[1]}` : entityId;
+  }
+  if (entityId.startsWith("gpu:")) return entityId.slice("gpu:".length);
+  if (entityId.startsWith("bt:")) return entityId.slice("bt:".length);
   return entityId;
+}
+
+/** °C→°F conversion happens only at display time (contract §1). */
+export function convertTemperature(celsius: number, unit: "celsius" | "fahrenheit"): number {
+  return unit === "fahrenheit" ? celsius * 1.8 + 32 : celsius;
 }
 
 export function metricKey(metricId: string, entityId: string): string {
@@ -69,6 +98,12 @@ export const HISTORY_WATCHED = new Set([
   "memory.physical.used",
   "net.interface.rx_rate",
   "net.interface.tx_rate",
+  // Phase 05: slow-cadence families kept in the ring for Sensors-page
+  // sparklines (battery is 60 s cadence; temperatures 10 s).
+  "sensor.temperature",
+  "sensor.fan.speed",
+  "battery.charge",
+  "gpu.engine.utilization",
 ]);
 
 export class MetricHistory {

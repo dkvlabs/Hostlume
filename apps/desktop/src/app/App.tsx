@@ -12,6 +12,7 @@ import { ApplicationsPage } from "@/features/applications/ApplicationsPage";
 import { NetworkPage } from "@/features/network/NetworkPage";
 import { OverviewPage } from "@/features/overview/OverviewPage";
 import { StoragePage } from "@/features/storage/StoragePage";
+import { SensorsPage } from "@/features/sensors/SensorsPage";
 import { PlaceholderPage } from "@/features/placeholder/PlaceholderPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { useT } from "@/lib/i18n";
@@ -42,6 +43,7 @@ function renderPage(page: PageId, title: string) {
     case "network":
       return <NetworkPage />;
     case "sensors":
+      return <SensorsPage />;
     case "compare":
       return <PlaceholderPage title={title} />;
   }

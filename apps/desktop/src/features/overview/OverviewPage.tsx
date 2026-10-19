@@ -9,7 +9,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useT } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTelemetryStore } from "@/stores/telemetryStore";
-import { CpuCard, HostCard, MemoryCard, NetworkCard, StorageCard } from "./cards";
+import {
+  BatteryCard,
+  CpuCard,
+  GpuCard,
+  HostCard,
+  MemoryCard,
+  NetworkCard,
+  SensorsCard,
+  StorageCard,
+} from "./cards";
 import type { HistoryRange } from "@/lib/useHistorySeries";
 
 /** Time ranges: <=15 min ring buffer, 1 h / 24 h database-backed. */
@@ -84,6 +93,9 @@ export function OverviewPage() {
     storage: <StorageCard />,
     network: <NetworkCard range={range} />,
     host: <HostCard />,
+    gpu: <GpuCard />,
+    sensors: <SensorsCard />,
+    battery: <BatteryCard />,
   };
 
   const visibleCards = (cards ?? []).filter((card) => card.visible);

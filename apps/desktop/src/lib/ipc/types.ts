@@ -92,6 +92,30 @@ export interface HistoryRetention {
 
 export type RateUnit = "bytes" | "bits";
 
+export type TemperatureUnit = "celsius" | "fahrenheit";
+
+/** One graphics adapter + its displays (FX-010 `get_gpu_info`). */
+export interface GpuDisplay {
+  name: string;
+  resolution?: string;
+  is_main: boolean;
+  is_online: boolean;
+}
+
+export interface GpuAdapter {
+  id: string;
+  name: string;
+  vendor?: string;
+  is_unified_memory: boolean;
+  vram_bytes?: number;
+  displays: GpuDisplay[];
+}
+
+export interface GpuInfoReport {
+  generated_at_utc: string;
+  adapters: GpuAdapter[];
+}
+
 export interface ExternalLookup {
   enabled: boolean;
   provider: string;
@@ -109,6 +133,7 @@ export interface Settings {
   history: HistoryRetention;
   rate_unit: RateUnit;
   external_lookup: ExternalLookup;
+  temperature_unit: TemperatureUnit;
 }
 
 export interface SettingsPatch {
@@ -121,6 +146,7 @@ export interface SettingsPatch {
   history?: HistoryRetention;
   rate_unit?: RateUnit;
   external_lookup?: ExternalLookup;
+  temperature_unit?: TemperatureUnit;
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */

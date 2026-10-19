@@ -1,26 +1,37 @@
-//! Portable sysinfo-based collectors (Phase 02, FX-001..004, FX-006).
+//! Portable sysinfo-based collectors (Phases 02–04) and the Phase 05
+//! hardware-conditional collectors (sensors, battery, Bluetooth, GPU).
 //!
-//! Layering per ADR-0004: sysinfo is the portable baseline and lives in the
-//! app runtime; OS-specific collectors (IOKit battery/sensors, Win32, hwmon)
-//! join the platform crates in later phases. Every reading carries its
-//! `source` (= collector id), an availability state and, when absent, a
-//! null value — collectors never fabricate numbers.
+//! Layering per ADR-0004/ADR-0006: sysinfo is the portable baseline and
+//! lives in the app runtime; OS-specific probing (IOKit battery access,
+//! hwmon fans, DRM GPU counters, profiler/UPower subprocess probes) is
+//! cfg-split inside these collectors with the pure parsing separated from
+//! platform I/O. Every reading carries its `source` (= collector id), an
+//! availability state and, when absent, a null value — collectors never
+//! fabricate numbers.
 
+pub mod battery;
+pub mod bluetooth;
 pub mod cpu;
 pub mod disk_io;
 pub mod disks;
+pub mod gpu;
 pub mod host;
 pub mod memory;
 pub mod network;
+pub mod sensors;
 
 use monitor_core::{Availability, Clock, MetricReading, MetricUnit, MetricValue};
 
+pub use battery::BatteryCollector;
+pub use bluetooth::BluetoothCollector;
 pub use cpu::CpuCollector;
 pub use disk_io::DiskIoCollector;
 pub use disks::DisksCollector;
+pub use gpu::GpuCollector;
 pub use host::HostCollector;
 pub use memory::MemoryCollector;
 pub use network::NetworkCollector;
+pub use sensors::SensorsCollector;
 
 /// Shared reading builder so every emitted reading has identical
 /// provenance fields; the scheduler stamps the enclosing sequence.

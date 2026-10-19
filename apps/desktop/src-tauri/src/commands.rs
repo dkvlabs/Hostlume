@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use monitor_core::{CapabilityReport, SystemSnapshot};
+use monitor_core::{CapabilityReport, Clock, SystemSnapshot};
 use monitor_history::{HistoryQuery, HistoryResponse};
 use serde::Serialize;
 use tauri::State;
@@ -73,7 +73,50 @@ pub fn get_snapshot(state: State<'_, AppState>) -> Result<SystemSnapshot, Comman
 
 #[tauri::command]
 pub fn get_capabilities(state: State<'_, AppState>) -> CapabilityReport {
-    state.capabilities.clone()
+    state
+        .capabilities
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+/// Re-run every capability probe on demand (phase 05 §2.1/§2.8): the UI's
+/// "re-probe" affordance after a driver/permission/device change. Replaces
+/// the stored report and bumps the capabilities revision.
+#[tauri::command]
+pub fn reprobe_capabilities(state: State<'_, AppState>) -> CapabilityReport {
+    let report =
+        crate::build_capability_report(&state.host_id, monitor_core::SystemClock.now_utc_iso8601());
+    let next_revision = state
+        .capabilities_revision
+        .load(Ordering::Relaxed)
+        .wrapping_add(1);
+    state
+        .capabilities_revision
+        .store(next_revision, Ordering::Relaxed);
+    let mut guard = state
+        .capabilities
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = report;
+    guard.clone()
+}
+
+/// Graphics adapter and display identity (FX-010). Static metadata probed
+/// on demand — separate from the polled metric stream, so live-utilization
+/// availability stays honest in the snapshot.
+#[tauri::command]
+pub fn get_gpu_info() -> monitor_core::GpuInfoReport {
+    let adapters = if cfg!(target_os = "macos") {
+        monitor_platform_macos::gpu_adapters::adapters().unwrap_or_default()
+    } else if cfg!(target_os = "windows") {
+        monitor_platform_windows::gpu_adapters::adapters().unwrap_or_default()
+    } else if cfg!(target_os = "linux") {
+        monitor_platform_linux::gpu_adapters::adapters().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    monitor_core::GpuInfoReport::new(monitor_core::SystemClock.now_utc_iso8601(), adapters)
 }
 
 /// Per-collector health: tick counts, errors, last success and duration.

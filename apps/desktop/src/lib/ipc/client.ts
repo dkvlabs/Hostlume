@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   isCapabilityReport,
+  isGpuInfoReport,
   isDiagnosticsReport,
   isHistoryResponse,
   isProcessActionResult,
@@ -17,6 +18,7 @@ import {
 } from "./guards";
 import type {
   CapabilityReport,
+  GpuInfoReport,
   CommandErrorPayload,
   DiagnosticsReport,
   HistoryResponse,
@@ -84,6 +86,22 @@ export const ipc = {
   async getCapabilities(): Promise<CapabilityReport> {
     try {
       return await invokeValidated("get_capabilities", undefined, isCapabilityReport);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async reprobeCapabilities(): Promise<CapabilityReport> {
+    try {
+      return await invokeValidated("reprobe_capabilities", undefined, isCapabilityReport);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async getGpuInfo(): Promise<GpuInfoReport> {
+    try {
+      return await invokeValidated("get_gpu_info", undefined, isGpuInfoReport);
     } catch (err) {
       throw toIpcError(err);
     }

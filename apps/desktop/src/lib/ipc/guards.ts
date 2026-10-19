@@ -10,6 +10,9 @@ import type {
   CommandErrorPayload,
   DiagnosticsReport,
   HistoryResponse,
+  GpuAdapter,
+  GpuDisplay,
+  GpuInfoReport,
   MetricCapability,
   MetricReading,
   ProcessActionResult,
@@ -140,6 +143,7 @@ export function isSettings(value: unknown): value is Settings {
     return false;
   }
   if (!["bytes", "bits"].includes(value.rate_unit as string)) return false;
+  if (!["celsius", "fahrenheit"].includes(value.temperature_unit as string)) return false;
   const lookup = value.external_lookup;
   if (!isRecord(lookup)) return false;
   return (
@@ -147,6 +151,37 @@ export function isSettings(value: unknown): value is Settings {
     typeof lookup.provider === "string" &&
     isFiniteNumber(lookup.timeout_secs)
   );
+}
+
+export function isGpuDisplay(value: unknown): value is GpuDisplay {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.name === "string" &&
+    (value.resolution === undefined || typeof value.resolution === "string") &&
+    typeof value.is_main === "boolean" &&
+    typeof value.is_online === "boolean"
+  );
+}
+
+export function isGpuAdapter(value: unknown): value is GpuAdapter {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.vendor === undefined || typeof value.vendor === "string") &&
+    typeof value.is_unified_memory === "boolean" &&
+    (value.vram_bytes === undefined ||
+      (isFiniteNumber(value.vram_bytes) && Number.isInteger(value.vram_bytes))) &&
+    Array.isArray(value.displays) &&
+    value.displays.every((display) => isGpuDisplay(display))
+  );
+}
+
+export function isGpuInfoReport(value: unknown): value is GpuInfoReport {
+  if (!isRecord(value)) return false;
+  if (typeof value.generated_at_utc !== "string") return false;
+  if (!Array.isArray(value.adapters)) return false;
+  return value.adapters.every((adapter) => isGpuAdapter(adapter));
 }
 
 export function isDiagnosticsReport(value: unknown): value is DiagnosticsReport {

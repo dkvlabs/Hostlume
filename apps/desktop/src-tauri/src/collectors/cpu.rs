@@ -44,6 +44,11 @@ impl CpuCollector {
             families::CPU_TOTAL_USAGE,
             families::CPU_CORE_USAGE,
             families::CPU_CORE_FREQUENCY,
+            // Per-process CPU is implemented behind the process page
+            // (pid + start-time identity, phase 03) rather than the polled
+            // snapshot; the capability report must still cover the family.
+            families::CPU_PROCESS_USAGE_CORES,
+            families::CPU_PROCESS_USAGE_HOST,
         ]
         .iter()
         .map(|id| MetricCapability {

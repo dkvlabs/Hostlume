@@ -142,6 +142,7 @@ describe("isSettings", () => {
     history: { raw_hours: 24, rollup_1m_days: 30, rollup_1h_days: 365 },
     rate_unit: "bytes",
     external_lookup: { enabled: false, provider: "ipify", timeout_secs: 5 },
+    temperature_unit: "celsius",
   };
 
   it("accepts valid settings", () => {

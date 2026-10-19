@@ -1,16 +1,21 @@
-//! macOS platform adapter — Phase 01 seam.
+//! macOS platform adapter (Phase 05 role).
 //!
-//! Real native collectors land with the telemetry phases (validated sources
-//! per ADR-0004: sysinfo baseline, IOKit `AppleSmartBattery`, IOKit HID
-//! temperature sensors; see `docs/evidence/FEASIBILITY_SPIKES.md`). This
-//! crate must compile on every OS so CI catches divergence immediately; on
-//! non-macOS targets everything reports explicit `WRONG_PLATFORM` and no
-//! values are ever fabricated.
+//! Per ADR-0006 the *reading* collectors live in the app runtime crate
+//! (cfg-split, unit-testable); this crate contributes what is genuinely
+//! OS-bound and app-independent:
+//!
+//! * `gpu_adapters` — the `system_profiler`-based adapter/display metadata
+//!   provider behind the `get_gpu_info` IPC command (FX-010).
+//! * A cross-compile guard collector: on non-macOS targets it reports
+//!   explicit `WRONG_PLATFORM` rows so CI catches divergence, and on a
+//!   native Mac it claims nothing — metric families are owned by the app
+//!   collectors, which probe the real host state.
 
 use monitor_core::{
-    families, Availability, Clock, Collector, CollectorError, MetricCapability, MetricReading,
-    PollGroup,
+    Availability, Clock, Collector, CollectorError, MetricCapability, MetricReading, PollGroup,
 };
+
+pub mod gpu_adapters;
 
 pub const COLLECTOR_ID: &str = "platform-macos";
 
@@ -24,36 +29,12 @@ fn is_native() -> bool {
     false
 }
 
-/// Phase 01 skeleton collector: capabilities are honest, samples are empty.
 #[derive(Debug, Default)]
 pub struct PlatformCollector;
 
 impl PlatformCollector {
     pub fn new() -> Self {
         Self
-    }
-
-    fn capability_for(&self, metric_id: &str) -> MetricCapability {
-        if is_native() {
-            MetricCapability::not_implemented_yet(metric_id.to_string(), COLLECTOR_ID)
-        } else {
-            MetricCapability {
-                metric_id: metric_id.to_string(),
-                state: Availability::Unsupported,
-                source: COLLECTOR_ID.to_string(),
-                explanation: Some(
-                    "This build of the macOS adapter is running on a different operating system."
-                        .to_string(),
-                ),
-                reason_code: Some("WRONG_PLATFORM".to_string()),
-                remediation: None,
-                human_message_key: Some("capabilities.wrongPlatform".to_string()),
-                precision: None,
-                freshness_budget_ms: None,
-                permissions_required: Vec::new(),
-                optional_helper_required: false,
-            }
-        }
     }
 }
 
@@ -66,11 +47,35 @@ impl Collector for PlatformCollector {
         PollGroup::Slow
     }
 
+    /// Native: no rows — every metric family is owned by an app-runtime
+    /// collector whose capability row reflects the *probed* host state.
+    /// Cross-compiled: explicit `WRONG_PLATFORM` rows (filtered out by the
+    /// report builder) so nothing silently claims macOS capabilities.
     fn capabilities(&self) -> Vec<MetricCapability> {
-        families::ALL_FAMILIES
-            .iter()
-            .map(|id| self.capability_for(id))
-            .collect()
+        if is_native() {
+            Vec::new()
+        } else {
+            monitor_core::families::ALL_FAMILIES
+                .iter()
+                .map(|metric_id| MetricCapability {
+                    metric_id: (*metric_id).to_string(),
+                    state: Availability::Unsupported,
+                    source: COLLECTOR_ID.to_string(),
+                    explanation: Some(
+                        "This build of the macOS adapter is running on a different operating \
+                         system."
+                            .to_string(),
+                    ),
+                    reason_code: Some(monitor_core::reasons::WRONG_PLATFORM.to_string()),
+                    remediation: None,
+                    human_message_key: Some("capabilities.wrongPlatform".to_string()),
+                    precision: None,
+                    freshness_budget_ms: None,
+                    permissions_required: Vec::new(),
+                    optional_helper_required: false,
+                })
+                .collect()
+        }
     }
 
     fn sample(&mut self, _clock: &dyn Clock) -> Result<Vec<MetricReading>, CollectorError> {
@@ -80,8 +85,7 @@ impl Collector for PlatformCollector {
                 reason: "compiled for a different target OS".to_string(),
             });
         }
-        // Real collectors arrive with the telemetry phases; until then an
-        // empty set is the honest output (never placeholder values).
+        // Reading collectors live in the app runtime; nothing to emit here.
         Ok(Vec::new())
     }
 }
@@ -89,17 +93,14 @@ impl Collector for PlatformCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use monitor_core::{families, SystemClock};
+    use monitor_core::SystemClock;
 
+    #[cfg(target_os = "macos")]
     #[test]
-    fn capabilities_cover_every_family() {
-        let caps = PlatformCollector::new().capabilities();
-        assert_eq!(caps.len(), families::ALL_FAMILIES.len());
-        assert!(caps.iter().all(|c| c.state == Availability::Unsupported));
-        assert!(caps.iter().all(
-            |c| c.reason_code.as_deref() == Some("COLLECTOR_NOT_IMPLEMENTED")
-                || c.reason_code.as_deref() == Some("WRONG_PLATFORM")
-        ));
+    fn native_capabilities_claim_nothing() {
+        // The app-runtime collectors own every family's capability row; a
+        // second (static) voice here could contradict the probed truth.
+        assert!(PlatformCollector::new().capabilities().is_empty());
     }
 
     #[cfg(target_os = "macos")]
@@ -112,9 +113,28 @@ mod tests {
 
     #[cfg(not(target_os = "macos"))]
     #[test]
-    fn non_native_sample_is_typed_unsupported() {
+    fn non_native_rows_are_marked_wrong_platform() {
+        let caps = PlatformCollector::new().capabilities();
+        assert_eq!(caps.len(), monitor_core::families::ALL_FAMILIES.len());
+        assert!(caps
+            .iter()
+            .all(|c| c.reason_code.as_deref() == Some("WRONG_PLATFORM")));
         let mut c = PlatformCollector::new();
         let err = c.sample(&SystemClock).expect_err("must refuse");
         assert!(matches!(err, CollectorError::Unsupported { .. }));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn live_gpu_metadata_probe_reports_adapters() {
+        let adapters = gpu_adapters::adapters().expect("probe ok");
+        assert!(!adapters.is_empty());
+        for adapter in &adapters {
+            assert!(adapter.id.starts_with("gpu:"));
+            // Unified-memory honesty on this Apple Silicon machine.
+            if adapter.is_unified_memory {
+                assert_eq!(adapter.vram_bytes, None);
+            }
+        }
     }
 }

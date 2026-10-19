@@ -18,11 +18,13 @@ import { useT } from "@/lib/i18n";
 import {
   entityLabel,
   findReading,
+  firstReading,
   formatUptime,
   numericValue,
   readingsFor,
   textValue,
 } from "@/lib/metrics";
+import type { MetricReading } from "@/lib/ipc/types";
 import { useHistorySeries, type HistoryRange } from "@/lib/useHistorySeries";
 import { formatByUnit } from "@/lib/formatting/units";
 import { useTelemetryStore } from "@/stores/telemetryStore";
@@ -344,6 +346,136 @@ export function HostCard() {
             </div>
           ))}
         </dl>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Phase 05 hardware-conditional cards (FX-010/012/013). Each renders real
+ * values when its family is available and a capability explanation
+ * otherwise — a card is never an empty frame or a zero.
+ */
+
+export function SensorsCard() {
+  const t = useT();
+  const snapshot = useTelemetryStore((s) => s.snapshot);
+  const temperatures = readingsFor(snapshot, "sensor.temperature");
+  const hottest = temperatures
+    .map((reading) => ({ reading, value: numericValue(reading) }))
+    .filter((entry): entry is { reading: MetricReading; value: number } => entry.value !== null)
+    .sort((a, b) => b.value - a.value)[0];
+  const fans = readingsFor(snapshot, "sensor.fan.speed");
+
+  return (
+    <Card data-testid="card-sensors">
+      <CardHeader>
+        <CardTitle>{t("overview.card.sensors")}</CardTitle>
+        {hottest && hottest.reading.availability !== "available" ? (
+          <MetricAvailability
+            availability={hottest.reading.availability}
+            reasonCode={hottest.reading.reason_code}
+          />
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        {hottest === undefined ? (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <span>—</span>
+            <span>{t("overview.card.sensors.none")}</span>
+          </div>
+        ) : (
+          <>
+            <p className="numeric text-2xl font-semibold">
+              {formatByUnit(hottest.value, "celsius", 1)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {entityLabel(hottest.reading.entity_id)}
+              {temperatures.length > 1
+                ? ` · ${t("overview.card.sensors.count").replace("{count}", String(temperatures.length))}`
+                : ""}
+              {fans.length > 0
+                ? ` · ${t("overview.card.sensors.fans").replace("{count}", String(fans.length))}`
+                : ""}
+            </p>
+          </>
+        )}
+        <p className="mt-2 text-[10px] text-muted">{t("overview.card.sensors.unitNote")}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function GpuCard() {
+  const t = useT();
+  const snapshot = useTelemetryStore((s) => s.snapshot);
+  const utilization = firstReading(snapshot, "gpu.engine.utilization");
+  const value = numericValue(utilization);
+  return (
+    <Card data-testid="card-gpu">
+      <CardHeader>
+        <CardTitle>{t("overview.card.gpu")}</CardTitle>
+        {utilization && utilization.availability !== "available" ? (
+          <MetricAvailability
+            availability={utilization.availability}
+            reasonCode={utilization.reason_code}
+          />
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        {value === null ? (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <span>—</span>
+            <span>{t("overview.card.gpu.unavailable")}</span>
+          </div>
+        ) : (
+          <p className="numeric text-2xl font-semibold">{formatByUnit(value, "percent", 0)}</p>
+        )}
+        <p className="mt-2 text-[10px] text-muted">{t("overview.card.gpu.note")}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function BatteryCard() {
+  const t = useT();
+  const snapshot = useTelemetryStore((s) => s.snapshot);
+  const charge = firstReading(snapshot, "battery.charge");
+  const status = firstReading(snapshot, "battery.status");
+  const health = firstReading(snapshot, "battery.health");
+  const chargeValue = numericValue(charge);
+  const healthValue = numericValue(health);
+
+  return (
+    <Card data-testid="card-battery">
+      <CardHeader>
+        <CardTitle>{t("overview.card.battery")}</CardTitle>
+        {charge && charge.availability !== "available" ? (
+          <MetricAvailability
+            availability={charge.availability}
+            reasonCode={charge.reason_code}
+          />
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        {chargeValue === null ? (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <span>—</span>
+            <span>{t("overview.card.battery.absent")}</span>
+          </div>
+        ) : (
+          <>
+            <p className="numeric text-2xl font-semibold">
+              {formatByUnit(chargeValue, "percent", 0)}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {textValue(status) ?? "—"}
+              {healthValue !== null
+                ? ` · ${t("overview.card.battery.health")} ${formatByUnit(healthValue, "percent", 0)}`
+                : ""}
+            </p>
+          </>
+        )}
       </CardContent>
     </Card>
   );
