@@ -85,7 +85,7 @@ Known dev-mode caveat: notifications from unsigned dev binaries require the attr
 * WebView is untrusted: all rules validated in Rust (`create/update/test_alert_rule`), client-assigned ids refused, unknown ids rejected, rule cap 50, event query limit ≤ 200.
 * No remote route to actions or notifications (no server exists; phase 08 gate recorded in ADR-0007).
 * Honest availability: unavailable readings never evaluate as values; notification permission is reported as OS-managed, never fake-"granted" (the plugin's stubbed `permission_state` is deliberately not surfaced).
-* Post-commit Mimosa deep scan: see §8.
+* Post-commit Mimosa deep scan (commit 88d65c0): deep scan **0 findings**, 486 packages, 0 matched advisories, sealed `sha256:e25dcb29505e5cb613dd94955009485e86a8832b14571a68442e40e876e463ac` (`scan-2026-10-19T13-39-51.618Z-8ae535705ca9`). Reported as a scan result, not a safety claim.
 
 ## 7. Blockers / deviations
 
