@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 6;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 7;
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -59,6 +59,35 @@ impl Default for TrayConfig {
             show_memory: true,
             show_network: true,
             show_title: true,
+        }
+    }
+}
+
+/// Alert settings (phase 07 §3.4/§3.8). Notification delivery defaults on;
+/// **local action workflows default off** — the master gate plus the
+/// per-rule approval are both required before the runner will ever spawn a
+/// configured program (security-privacy.md §5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AlertsConfig {
+    pub notifications_enabled: bool,
+    pub actions_enabled: bool,
+    pub quiet_hours_enabled: bool,
+    /// Minute of local day (0..=1439); `start > end` wraps midnight.
+    pub quiet_start_minute: u16,
+    pub quiet_end_minute: u16,
+}
+
+pub const QUIET_MINUTE_MAX: u16 = 23 * 60 + 59;
+
+impl Default for AlertsConfig {
+    fn default() -> Self {
+        Self {
+            notifications_enabled: true,
+            actions_enabled: false,
+            quiet_hours_enabled: false,
+            quiet_start_minute: 22 * 60,
+            quiet_end_minute: 8 * 60,
         }
     }
 }
@@ -152,6 +181,8 @@ pub struct Settings {
     /// Launch at login (tauri-plugin-autostart; OS login item applied when
     /// the setting changes — never silently at startup).
     pub launch_at_login: bool,
+    /// Alert notifications, quiet hours and the local-action master gate.
+    pub alerts: AlertsConfig,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -180,6 +211,7 @@ impl Default for Settings {
             temperature_unit: TemperatureUnit::default(),
             tray: TrayConfig::default(),
             launch_at_login: false,
+            alerts: AlertsConfig::default(),
         }
     }
 }
@@ -205,6 +237,8 @@ pub enum SettingsError {
     HistoryRetentionOutOfBounds { field: &'static str, value: u32 },
     #[error("external lookup timeout {value}s is outside 1..=30")]
     ExternalLookupTimeoutOutOfBounds { value: u32 },
+    #[error("quiet-hours minute {value} is outside 0..={max}")]
+    QuietMinuteOutOfBounds { value: u16, max: u16 },
 }
 
 impl Settings {
@@ -257,6 +291,17 @@ impl Settings {
                 supported: vec!["ipify".to_string()],
             });
         }
+        if self.alerts.quiet_start_minute > QUIET_MINUTE_MAX
+            || self.alerts.quiet_end_minute > QUIET_MINUTE_MAX
+        {
+            return Err(SettingsError::QuietMinuteOutOfBounds {
+                value: self
+                    .alerts
+                    .quiet_start_minute
+                    .max(self.alerts.quiet_end_minute),
+                max: QUIET_MINUTE_MAX,
+            });
+        }
         Ok(())
     }
 
@@ -292,6 +337,9 @@ impl Settings {
         }
         if let Some(external_lookup) = patch.external_lookup {
             self.external_lookup = external_lookup;
+        }
+        if let Some(alerts) = patch.alerts {
+            self.alerts = alerts;
         }
     }
 }
@@ -329,6 +377,7 @@ pub struct SettingsPatch {
     pub temperature_unit: Option<TemperatureUnit>,
     pub tray: Option<TrayConfig>,
     pub launch_at_login: Option<bool>,
+    pub alerts: Option<AlertsConfig>,
 }
 
 /// The v5 row shape (adds temperature unit + Phase 05 overview cards;
@@ -368,9 +417,9 @@ impl Default for SettingsV5 {
 }
 
 impl SettingsV5 {
-    pub fn into_v6(self) -> Settings {
-        Settings {
-            schema_version: SETTINGS_SCHEMA_VERSION,
+    pub fn into_v6(self) -> SettingsV6 {
+        SettingsV6 {
+            schema_version: 6,
             appearance: self.appearance,
             compact_mode: self.compact_mode,
             polling_base_seconds: self.polling_base_seconds,
@@ -383,6 +432,67 @@ impl SettingsV5 {
             temperature_unit: self.temperature_unit,
             tray: TrayConfig::default(),
             launch_at_login: false,
+        }
+    }
+}
+
+/// The v6 row shape (adds tray configuration and launch-at-login; predates
+/// the alert settings of phase 07).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsV6 {
+    pub schema_version: u32,
+    pub appearance: Appearance,
+    pub compact_mode: bool,
+    pub polling_base_seconds: u32,
+    pub close_to_tray: bool,
+    pub locale: String,
+    pub overview_cards: Vec<OverviewCard>,
+    pub history: HistoryRetention,
+    pub rate_unit: RateUnit,
+    pub external_lookup: ExternalLookup,
+    pub temperature_unit: TemperatureUnit,
+    pub tray: TrayConfig,
+    pub launch_at_login: bool,
+}
+
+impl Default for SettingsV6 {
+    fn default() -> Self {
+        Self {
+            schema_version: 6,
+            appearance: Appearance::System,
+            compact_mode: false,
+            polling_base_seconds: POLLING_DEFAULT_SECS,
+            close_to_tray: false,
+            locale: DEFAULT_LOCALE.to_string(),
+            overview_cards: default_overview_cards(),
+            history: HistoryRetention::default(),
+            rate_unit: RateUnit::default(),
+            external_lookup: ExternalLookup::default(),
+            temperature_unit: TemperatureUnit::default(),
+            tray: TrayConfig::default(),
+            launch_at_login: false,
+        }
+    }
+}
+
+impl SettingsV6 {
+    pub fn into_v7(self) -> Settings {
+        Settings {
+            schema_version: SETTINGS_SCHEMA_VERSION,
+            appearance: self.appearance,
+            compact_mode: self.compact_mode,
+            polling_base_seconds: self.polling_base_seconds,
+            close_to_tray: self.close_to_tray,
+            locale: self.locale,
+            overview_cards: self.overview_cards,
+            history: self.history,
+            rate_unit: self.rate_unit,
+            external_lookup: self.external_lookup,
+            temperature_unit: self.temperature_unit,
+            tray: self.tray,
+            launch_at_login: self.launch_at_login,
+            alerts: AlertsConfig::default(),
         }
     }
 }
@@ -591,6 +701,7 @@ impl SettingsV1 {
         .into_v4()
         .into_v5()
         .into_v6()
+        .into_v7()
     }
 }
 
@@ -740,6 +851,7 @@ mod tests {
         assert_eq!(migrated.locale, "ro");
         assert_eq!(migrated.overview_cards, default_overview_cards());
         assert_eq!(migrated.history, HistoryRetention::default());
+        assert_eq!(migrated.alerts, AlertsConfig::default());
         // Old rows deserialize as v1 exactly (round-trip safety of fixture).
         let json = serde_json::to_string(&v1).unwrap();
         let back: SettingsV1 = serde_json::from_str(&json).unwrap();
@@ -756,7 +868,7 @@ mod tests {
             }],
             ..SettingsV2::default()
         };
-        let migrated = v2.into_v3().into_v4().into_v5().into_v6();
+        let migrated = v2.into_v3().into_v4().into_v5().into_v6().into_v7();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.appearance, Appearance::Light);
@@ -774,12 +886,44 @@ mod tests {
             polling_base_seconds: 7,
             ..SettingsV5::default()
         };
-        let migrated = v5.into_v6();
+        let migrated = v5.into_v6().into_v7();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.polling_base_seconds, 7);
         assert!(migrated.tray.enabled, "tray defaults on");
         assert!(!migrated.launch_at_login, "opt-in stays off");
+    }
+
+    #[test]
+    fn v6_settings_migrate_to_v7_with_alert_defaults() {
+        let v6 = SettingsV6 {
+            appearance: Appearance::Dark,
+            polling_base_seconds: 9,
+            ..SettingsV6::default()
+        };
+        let migrated = v6.into_v7();
+        migrated.validate().expect("migrated settings valid");
+        assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.polling_base_seconds, 9);
+        assert!(
+            migrated.alerts.notifications_enabled,
+            "notifications default on"
+        );
+        assert!(!migrated.alerts.actions_enabled, "local actions stay OFF");
+        assert!(!migrated.alerts.quiet_hours_enabled);
+    }
+
+    #[test]
+    fn quiet_hours_minutes_are_bounded() {
+        let mut s = Settings::default();
+        s.alerts.quiet_start_minute = QUIET_MINUTE_MAX + 1;
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::QuietMinuteOutOfBounds { .. })
+        ));
+        s.alerts.quiet_start_minute = 22 * 60;
+        s.alerts.quiet_end_minute = 8 * 60;
+        assert!(s.validate().is_ok(), "start > end wraps midnight");
     }
 
     #[test]
@@ -792,7 +936,7 @@ mod tests {
             }],
             ..SettingsV4::default()
         };
-        let migrated = v4.into_v5().into_v6();
+        let migrated = v4.into_v5().into_v6().into_v7();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert!(!migrated.overview_cards[0].visible);

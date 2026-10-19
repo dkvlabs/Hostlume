@@ -4,6 +4,9 @@
  * against the contract shape before it may reach stores or components.
  */
 import type {
+  AlertActionConfig,
+  AlertEventRow,
+  AlertRule,
   Appearance,
   Availability,
   CapabilityReport,
@@ -15,8 +18,10 @@ import type {
   GpuInfoReport,
   MetricCapability,
   MetricReading,
+  NotificationStateInfo,
   ProcessActionResult,
   ProcessPage,
+  RuleProbe,
   Settings,
   SystemSnapshot,
   TelemetryEventPayload,
@@ -156,6 +161,17 @@ export function isSettings(value: unknown): value is Settings {
     return false;
   }
   if (typeof value.launch_at_login !== "boolean") return false;
+  const alerts = value.alerts;
+  if (!isRecord(alerts)) return false;
+  if (
+    typeof alerts.notifications_enabled !== "boolean" ||
+    typeof alerts.actions_enabled !== "boolean" ||
+    typeof alerts.quiet_hours_enabled !== "boolean" ||
+    !isFiniteNumber(alerts.quiet_start_minute) ||
+    !isFiniteNumber(alerts.quiet_end_minute)
+  ) {
+    return false;
+  }
   const lookup = value.external_lookup;
   if (!isRecord(lookup)) return false;
   return (
@@ -285,5 +301,67 @@ export function isTelemetryEventPayload(value: unknown): value is TelemetryEvent
     typeof value.sequence === "number" &&
     typeof value.collectedAtUtc === "string" &&
     typeof value.capabilitiesRevision === "number"
+  );
+}
+
+// ---- Alerts and approved local actions (FX-017, phase 07) ------------------
+
+export function isAlertActionConfig(value: unknown): value is AlertActionConfig {
+  return (
+    isRecord(value) &&
+    typeof value.program === "string" &&
+    isFiniteNumber(value.timeout_secs) &&
+    typeof value.approved === "boolean"
+  );
+}
+
+export function isAlertRule(value: unknown): value is AlertRule {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== "string" || typeof value.metric_id !== "string") return false;
+  if (value.entity_filter !== null && typeof value.entity_filter !== "string") return false;
+  if (!["above", "below"].includes(value.comparator as string)) return false;
+  if (!isFiniteNumber(value.threshold)) return false;
+  if (
+    !isFiniteNumber(value.hold_duration_ms) ||
+    !isFiniteNumber(value.hysteresis_delta) ||
+    !isFiniteNumber(value.cooldown_ms)
+  ) {
+    return false;
+  }
+  if (typeof value.enabled !== "boolean") return false;
+  if (value.notification_message !== null && typeof value.notification_message !== "string") {
+    return false;
+  }
+  if (value.action !== null && !isAlertActionConfig(value.action)) return false;
+  return true;
+}
+
+export function isAlertEventRow(value: unknown): value is AlertEventRow {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== "string" || typeof value.rule_id !== "string") return false;
+  if (!["firing", "resolved"].includes(value.state as string)) return false;
+  if (!isFiniteNumber(value.triggered_at_utc_ms)) return false;
+  if (value.resolved_at_utc_ms !== undefined && !isFiniteNumber(value.resolved_at_utc_ms)) {
+    return false;
+  }
+  return value.summary_json === undefined || typeof value.summary_json === "string";
+}
+
+export function isRuleProbe(value: unknown): value is RuleProbe {
+  if (!isRecord(value)) return false;
+  if (value.matched_entity !== null && typeof value.matched_entity !== "string") return false;
+  if (value.availability !== null && !AVAILABILITIES.includes(value.availability as Availability)) {
+    return false;
+  }
+  if (value.value !== null && !isFiniteNumber(value.value)) return false;
+  return typeof value.crossing_now === "boolean" && typeof value.explanation === "string";
+}
+
+export function isNotificationStateInfo(value: unknown): value is NotificationStateInfo {
+  if (!isRecord(value)) return false;
+  return (
+    ["macos", "windows", "linux"].includes(value.platform as string) &&
+    ["os_managed", "not_applicable"].includes(value.state as string) &&
+    typeof value.detail_key === "string"
   );
 }

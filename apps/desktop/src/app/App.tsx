@@ -63,18 +63,27 @@ export function App() {
   }, [loadSettings]);
 
   // Tray "Settings…" deep-links into the settings page (phase 06 §2.2).
+  // Outside a Tauri runtime (tests, plain browser) the event API cannot
+  // subscribe — that degrades quietly instead of rejecting unhandled.
   useEffect(() => {
     let dispose: (() => void) | undefined;
-    void import("@tauri-apps/api/event").then(({ listen }) =>
-      listen<string>("navigate://page", (event) => {
-        if (event.payload === "settings") {
-          setPage("settings");
-        }
+    let cancelled = false;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<string>("navigate://page", (event) => {
+          if (event.payload === "settings") {
+            setPage("settings");
+          }
+        })
+      )
+      .then((unlisten) => {
+        if (!cancelled) dispose = unlisten;
       })
-    ).then((unlisten) => {
-      dispose = unlisten;
-    });
-    return () => dispose?.();
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      dispose?.();
+    };
   }, []);
 
   // Theme + density + language side effects (persistence lives in SQLite;

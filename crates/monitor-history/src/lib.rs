@@ -11,12 +11,17 @@
 //! * Queries are bounded (`max_points`) and report gaps and missing ratios
 //!   instead of interpolating across them.
 
+pub mod alerts;
 pub mod migrations;
 pub mod query;
 pub mod retention;
 pub mod store;
 pub mod writer;
 
+pub use alerts::{
+    alert_rule_exists, delete_alert_rule, last_fire_per_rule, list_alert_rules,
+    list_recent_alert_events, upsert_alert_rule, AlertEventRow, AlertRuleRow,
+};
 pub use migrations::{apply_migrations, checksum_of, Migration, StoreError, MIGRATIONS};
 pub use query::{
     get_history, HistoryPoint, HistoryQuery, HistoryResponse, QueryError, Resolution,

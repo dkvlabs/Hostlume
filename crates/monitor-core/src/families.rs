@@ -62,6 +62,47 @@ pub const BATTERY_TIME_REMAINING: &str = "battery.time_remaining";
 pub const BATTERY_POWER_DRAW: &str = "battery.power_draw";
 pub const BLUETOOTH_DEVICE_NAME: &str = "bluetooth.device.name";
 
+/// Canonical unit of every *numeric* metric family, or `None` for text /
+/// boolean families. This is the alert-rule validator's compatibility
+/// registry (phase 07 §2): a threshold must be expressed in the same unit
+/// as the family it watches, so text families can never carry a threshold.
+pub fn numeric_unit(metric_id: &str) -> Option<crate::metric::MetricUnit> {
+    use crate::metric::MetricUnit;
+    match metric_id {
+        HOST_UPTIME => Some(MetricUnit::Seconds),
+        HOST_CPU_CORES_LOGICAL | HOST_CPU_CORES_PHYSICAL | BATTERY_CYCLES => {
+            Some(MetricUnit::Count)
+        }
+        CPU_TOTAL_USAGE
+        | CPU_CORE_USAGE
+        | CPU_PROCESS_USAGE_CORES
+        | CPU_PROCESS_USAGE_HOST
+        | GPU_ENGINE_UTILIZATION
+        | BATTERY_CHARGE
+        | BLUETOOTH_DEVICE_CHARGE => Some(MetricUnit::Percent),
+        MEMORY_PHYSICAL_TOTAL
+        | MEMORY_PHYSICAL_USED
+        | MEMORY_AVAILABLE
+        | MEMORY_SWAP_USED
+        | MEMORY_SWAP_TOTAL
+        | DISK_VOLUME_CAPACITY
+        | DISK_VOLUME_AVAILABLE
+        | DISK_DEVICE_READ_BYTES_TOTAL
+        | DISK_DEVICE_WRITE_BYTES_TOTAL
+        | GPU_MEMORY_DEDICATED_USED => Some(MetricUnit::Bytes),
+        DISK_DEVICE_READ_RATE
+        | DISK_DEVICE_WRITE_RATE
+        | NET_INTERFACE_RX_RATE
+        | NET_INTERFACE_TX_RATE => Some(MetricUnit::BytesPerSecond),
+        NET_INTERFACE_RX_TOTAL | NET_INTERFACE_TX_TOTAL => Some(MetricUnit::Bytes),
+        SENSOR_TEMPERATURE => Some(MetricUnit::Celsius),
+        SENSOR_FAN_SPEED => Some(MetricUnit::Rpm),
+        BATTERY_TIME_REMAINING => Some(MetricUnit::Seconds),
+        BATTERY_POWER_DRAW => Some(MetricUnit::Watts),
+        _ => None,
+    }
+}
+
 /// Every metric family the product roadmap covers. Platform collectors
 /// report capabilities against this list so "we can't measure X" is always
 /// an explicit row, never an absence.
@@ -112,3 +153,32 @@ pub const ALL_FAMILIES: &[&str] = &[
     BLUETOOTH_DEVICE_CHARGE,
     BLUETOOTH_DEVICE_NAME,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metric::MetricUnit;
+
+    #[test]
+    fn numeric_unit_registry_covers_alertable_families_and_rejects_text() {
+        assert_eq!(numeric_unit(CPU_TOTAL_USAGE), Some(MetricUnit::Percent));
+        assert_eq!(numeric_unit(SENSOR_TEMPERATURE), Some(MetricUnit::Celsius));
+        assert_eq!(numeric_unit(SENSOR_FAN_SPEED), Some(MetricUnit::Rpm));
+        assert_eq!(
+            numeric_unit(NET_INTERFACE_RX_RATE),
+            Some(MetricUnit::BytesPerSecond)
+        );
+        assert_eq!(
+            numeric_unit(NET_INTERFACE_RX_TOTAL),
+            Some(MetricUnit::Bytes)
+        );
+        assert_eq!(numeric_unit(BATTERY_POWER_DRAW), Some(MetricUnit::Watts));
+        // Text and boolean families carry no threshold.
+        assert_eq!(numeric_unit(HOST_HOSTNAME), None);
+        assert_eq!(numeric_unit(DISK_VOLUME_FILESYSTEM), None);
+        assert_eq!(numeric_unit(NET_INTERFACE_IPV4), None);
+        assert_eq!(numeric_unit(BATTERY_STATUS), None);
+        assert_eq!(numeric_unit(BLUETOOTH_DEVICE_NAME), None);
+        assert_eq!(numeric_unit("not.a.family"), None);
+    }
+}

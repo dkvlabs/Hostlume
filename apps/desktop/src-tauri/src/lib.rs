@@ -4,6 +4,8 @@
 //! capability only, no shell/filesystem plugins, all command inputs
 //! validated in Rust, no remote listener, no privileged helper.
 
+pub mod actions;
+pub mod alerts;
 pub mod collectors;
 pub mod commands;
 pub mod processes;
@@ -78,12 +80,28 @@ fn read_retention_horizons(app: &tauri::AppHandle) -> (u32, u32, u32) {
     }
 }
 
+/// WAL connection to the history database for the alert runtime (rules
+/// CRUD + restart restore). The batch writer keeps its own connection;
+/// WAL plus a busy timeout make both safe (ADR-0002).
+fn open_history_connection(
+    history_dir: &std::path::Path,
+) -> Result<rusqlite::Connection, std::io::Error> {
+    let mut conn = rusqlite::Connection::open(history_dir.join("history.sqlite3"))
+        .map_err(std::io::Error::other)?;
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(2_000));
+    monitor_history::apply_migrations(&mut conn, monitor_history::MIGRATIONS)
+        .map_err(|err| std::io::Error::other(format!("alerts db migration failed: {err}")))?;
+    Ok(conn)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -135,11 +153,27 @@ pub fn run() {
                 }
             };
 
-            // Snapshot tap: history persistence + tray repaint, one bus.
+            // Alert runtime (FX-017): persisted rules + restart-safe
+            // cooldown restore; evaluated on the snapshot tap below.
+            let alert_runtime = Arc::new(alerts::AlertRuntime::open(
+                &open_history_connection(&history_dir)?,
+                settings.alerts,
+            )?);
+
+            // Snapshot tap: alerts + history persistence + tray repaint,
+            // one bus.
             let tap_writer = Arc::clone(&history_writer);
             let tap_tray = tray_controller.clone();
+            let tap_app = handle.clone();
             let snapshot_tap: scheduler::SnapshotTap =
                 Some(Arc::new(move |snapshot: &monitor_core::SystemSnapshot| {
+                    {
+                        // Alerts evaluate first so a fired rule's audit
+                        // episode and this tick's samples share a clock.
+                        if let Some(state) = tap_app.try_state::<AppState>() {
+                            alerts::on_snapshot(&tap_app, &state, snapshot);
+                        }
+                    }
                     for reading in &snapshot.metrics {
                         let Some(monitor_core::MetricValue::Number(value)) = reading.value else {
                             continue;
@@ -238,6 +272,7 @@ pub fn run() {
                 processes: Mutex::new(processes::ProcessManager::new()),
                 scans: crate::storage::ScanRegistry::new(),
                 history_dir: Mutex::new(Some(history_dir)),
+                alerts: alert_runtime,
             });
             Ok(())
         })
@@ -278,6 +313,14 @@ pub fn run() {
             commands::move_to_trash,
             commands::open_in_manager,
             commands::lookup_external_ip,
+            alerts::get_alert_rules,
+            alerts::create_alert_rule,
+            alerts::update_alert_rule,
+            alerts::delete_alert_rule,
+            alerts::get_alert_events,
+            alerts::get_notification_state,
+            alerts::send_test_notification,
+            alerts::test_alert_rule,
         ])
         .build(tauri::generate_context!())
         .expect("error while building APP_NAME")

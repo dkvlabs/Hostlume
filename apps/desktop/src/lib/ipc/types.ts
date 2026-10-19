@@ -145,6 +145,16 @@ export interface Settings {
   temperature_unit: TemperatureUnit;
   tray: TrayConfig;
   launch_at_login: boolean;
+  alerts: AlertsConfig;
+}
+
+/** Alert delivery settings (phase 07); actions default OFF. */
+export interface AlertsConfig {
+  notifications_enabled: boolean;
+  actions_enabled: boolean;
+  quiet_hours_enabled: boolean;
+  quiet_start_minute: number;
+  quiet_end_minute: number;
 }
 
 export interface SettingsPatch {
@@ -160,6 +170,7 @@ export interface SettingsPatch {
   temperature_unit?: TemperatureUnit;
   tray?: TrayConfig;
   launch_at_login?: boolean;
+  alerts?: AlertsConfig;
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */
@@ -309,4 +320,62 @@ export interface TelemetryEventPayload {
   sequence: number;
   collectedAtUtc: string;
   capabilitiesRevision: number;
+}
+
+// ---- Alerts and approved local actions (FX-017, phase 07) ------------------
+
+export type AlertComparator = "above" | "below";
+
+/**
+ * Mirrors `monitor_alerts::ActionConfig`. This phase launches the approved
+ * program without an argument array (project security tooling refuses
+ * variable arg-list spawns — ADR-0007); multi-step logic belongs in an
+ * approved script.
+ */
+export interface AlertActionConfig {
+  program: string;
+  timeout_secs: number;
+  approved: boolean;
+}
+
+export interface AlertRule {
+  /** Empty on create (server assigns the UUID); non-empty for updates. */
+  id: string;
+  metric_id: string;
+  entity_filter: string | null;
+  comparator: AlertComparator;
+  threshold: number;
+  hold_duration_ms: number;
+  hysteresis_delta: number;
+  cooldown_ms: number;
+  enabled: boolean;
+  notification_message: string | null;
+  action: AlertActionConfig | null;
+}
+
+/** One fire→resolve episode from the audit log. */
+export interface AlertEventRow {
+  id: string;
+  rule_id: string;
+  state: "firing" | "resolved";
+  triggered_at_utc_ms: number;
+  resolved_at_utc_ms?: number;
+  summary_json?: string;
+}
+
+/** Fixture preview (`test_alert_rule`) — no side effects. */
+export interface RuleProbe {
+  matched_entity: string | null;
+  availability: Availability | null;
+  value: number | null;
+  crossing_now: boolean;
+  explanation: string;
+}
+
+/** Honest notification-permission report (the desktop plugin has no real
+ * permission query; macOS authorization is OS-managed). */
+export interface NotificationStateInfo {
+  platform: "macos" | "windows" | "linux";
+  state: "os_managed" | "not_applicable";
+  detail_key: string;
 }

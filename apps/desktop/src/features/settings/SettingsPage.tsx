@@ -19,6 +19,7 @@ import type { MessageKey } from "@/lib/i18n/dictionaries";
 import { ipc } from "@/lib/ipc/client";
 import type { Appearance, TemperatureUnit } from "@/lib/ipc/types";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { AlertsSection } from "@/features/alerts/AlertsSection";
 
 /** Mirrors apps/desktop/src-tauri/src/settings.rs safe bounds. */
 export const POLLING_MIN_SECS = 1;
@@ -280,6 +281,9 @@ export function SettingsPage() {
           ))}
         </CardContent>
       </Card>
+
+      {/* Alerts (FX-017, design.md §11): rules, notifications, actions. */}
+      <AlertsSection />
 
       <Card>
         <CardHeader>

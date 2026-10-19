@@ -44,6 +44,13 @@ function defaultSettings(): Settings {
         temperature_unit: "celsius",
         tray: { enabled: true, show_cpu: true, show_memory: true, show_network: true, show_title: true },
         launch_at_login: false,
+        alerts: {
+          notifications_enabled: true,
+          actions_enabled: false,
+          quiet_hours_enabled: false,
+          quiet_start_minute: 1320,
+          quiet_end_minute: 480,
+        },
   };
 }
 

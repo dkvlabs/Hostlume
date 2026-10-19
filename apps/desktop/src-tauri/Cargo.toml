@@ -22,6 +22,7 @@ tauri-build = { version = "2.7.3", features = [] }
 tauri = { version = "2.12.4", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2.5.4"
 tauri-plugin-autostart = "2.7.0"
+tauri-plugin-notification = "2.2.2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -30,9 +31,11 @@ sha2 = { workspace = true }
 sysinfo = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
 monitor-core = { workspace = true }
 monitor-history = { workspace = true }
 monitor-storage = { workspace = true }
+monitor-alerts = { workspace = true }
 monitor-platform-macos = { workspace = true }
 monitor-platform-windows = { workspace = true }
 monitor-platform-linux = { workspace = true }

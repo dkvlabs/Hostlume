@@ -6,26 +6,34 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
+  isAlertEventRow,
+  isAlertRule,
   isCapabilityReport,
   isGpuInfoReport,
   isDiagnosticsReport,
   isHistoryResponse,
+  isNotificationStateInfo,
   isProcessActionResult,
   isProcessPage,
+  isRuleProbe,
   isSettings,
   isSystemSnapshot,
   isTelemetryEventPayload,
 } from "./guards";
 import type {
+  AlertEventRow,
+  AlertRule,
   CapabilityReport,
   GpuInfoReport,
   CommandErrorPayload,
   DiagnosticsReport,
   HistoryResponse,
   HistoryQuerySpec,
+  NotificationStateInfo,
   ProcessActionRequest,
   ProcessActionResult,
   ProcessPage,
+  RuleProbe,
   ScanChildren,
   ScanStatus,
   Settings,
@@ -218,6 +226,74 @@ export const ipc = {
 
   async lookupExternalIp(): Promise<string> {
     return (await invoke("lookup_external_ip")) as string;
+  },
+
+  // ---- Alerts and approved local actions (FX-017, phase 07) ----------------
+
+  async getAlertRules(): Promise<AlertRule[]> {
+    const raw: unknown = await invoke("get_alert_rules");
+    if (!Array.isArray(raw)) {
+      throw new Error("get_alert_rules: response failed runtime validation");
+    }
+    return raw.map((rule) => {
+      if (!isAlertRule(rule)) {
+        throw new Error("get_alert_rules: rule failed runtime validation");
+      }
+      return rule;
+    });
+  },
+
+  async createAlertRule(rule: AlertRule): Promise<AlertRule> {
+    try {
+      return await invokeValidated("create_alert_rule", { rule }, isAlertRule);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async updateAlertRule(rule: AlertRule): Promise<AlertRule> {
+    try {
+      return await invokeValidated("update_alert_rule", { rule }, isAlertRule);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async deleteAlertRule(ruleId: string): Promise<boolean> {
+    return (await invoke("delete_alert_rule", { ruleId })) as boolean;
+  },
+
+  async getAlertEvents(limit?: number): Promise<AlertEventRow[]> {
+    const raw: unknown = await invoke("get_alert_events", { limit });
+    if (!Array.isArray(raw)) {
+      throw new Error("get_alert_events: response failed runtime validation");
+    }
+    return raw.map((row) => {
+      if (!isAlertEventRow(row)) {
+        throw new Error("get_alert_events: row failed runtime validation");
+      }
+      return row;
+    });
+  },
+
+  async getNotificationState(): Promise<NotificationStateInfo> {
+    try {
+      return await invokeValidated("get_notification_state", undefined, isNotificationStateInfo);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async sendTestNotification(): Promise<void> {
+    await invoke("send_test_notification");
+  },
+
+  async testAlertRule(rule: AlertRule): Promise<RuleProbe> {
+    try {
+      return await invokeValidated("test_alert_rule", { rule }, isRuleProbe);
+    } catch (err) {
+      throw toIpcError(err);
+    }
   },
 };
 

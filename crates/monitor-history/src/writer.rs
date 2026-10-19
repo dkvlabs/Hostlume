@@ -34,6 +34,15 @@ pub enum WriteItem {
         result: String,
         detail: Option<String>,
     },
+    /// Open a firing episode (phase 07): `state` starts as `firing`.
+    AlertEvent {
+        id: String,
+        rule_id: String,
+        triggered_at_utc_ms: i64,
+        summary_json: Option<String>,
+    },
+    /// Close an episode when the rule resolves.
+    AlertEventClose { id: String, resolved_at_utc_ms: i64 },
 }
 
 /// Writer-side instrumentation shared with diagnostics.
@@ -188,6 +197,15 @@ fn write_batch(
              (ts_utc_ms, target_pid, target_start_time, mode, result, detail) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
+        let mut insert_alert_event = tx.prepare_cached(
+            "INSERT INTO alert_events \
+             (id, rule_id, state, triggered_at_utc, resolved_at_utc, summary_json) \
+             VALUES (?1, ?2, 'firing', ?3, NULL, ?4)",
+        )?;
+        let mut close_alert_event = tx.prepare_cached(
+            "UPDATE alert_events \
+             SET state = 'resolved', resolved_at_utc = ?2 WHERE id = ?1",
+        )?;
         for item in batch {
             match item {
                 WriteItem::Sample {
@@ -227,6 +245,25 @@ fn write_batch(
                         result,
                         detail,
                     ])?;
+                }
+                WriteItem::AlertEvent {
+                    id,
+                    rule_id,
+                    triggered_at_utc_ms,
+                    summary_json,
+                } => {
+                    insert_alert_event.execute(rusqlite::params![
+                        id,
+                        rule_id,
+                        triggered_at_utc_ms,
+                        summary_json,
+                    ])?;
+                }
+                WriteItem::AlertEventClose {
+                    id,
+                    resolved_at_utc_ms,
+                } => {
+                    close_alert_event.execute(rusqlite::params![id, resolved_at_utc_ms])?;
                 }
             }
         }

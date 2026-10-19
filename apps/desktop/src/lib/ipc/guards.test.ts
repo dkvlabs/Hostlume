@@ -145,6 +145,13 @@ describe("isSettings", () => {
     temperature_unit: "celsius",
     tray: { enabled: true, show_cpu: true, show_memory: true, show_network: true, show_title: true },
     launch_at_login: false,
+    alerts: {
+      notifications_enabled: true,
+      actions_enabled: false,
+      quiet_hours_enabled: false,
+      quiet_start_minute: 1320,
+      quiet_end_minute: 480,
+    },
   };
 
   it("accepts valid settings", () => {
@@ -157,6 +164,16 @@ describe("isSettings", () => {
     expect(isSettings({ ...valid, polling_base_seconds: "3" })).toBe(false);
     expect(isSettings({ ...valid, overview_cards: "cpu" })).toBe(false);
     expect(isSettings({ ...valid, overview_cards: [{ id: 3, visible: true }] })).toBe(false);
+  });
+
+  it("rejects malformed alert settings", () => {
+    expect(isSettings({ ...valid, alerts: null })).toBe(false);
+    expect(
+      isSettings({
+        ...valid,
+        alerts: { ...valid.alerts, actions_enabled: "no" },
+      })
+    ).toBe(false);
   });
 });
 

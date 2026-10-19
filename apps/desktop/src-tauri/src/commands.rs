@@ -35,7 +35,7 @@ impl CommandError {
         }
     }
 
-    fn no_snapshot_yet() -> Self {
+    pub(crate) fn no_snapshot_yet() -> Self {
         Self {
             code: "NO_SNAPSHOT_YET",
             message_key: "errors.noSnapshotYet",
@@ -51,7 +51,7 @@ impl CommandError {
         }
     }
 
-    fn store(reason: String) -> Self {
+    pub(crate) fn store(reason: String) -> Self {
         Self {
             code: "STORE_ERROR",
             message_key: "errors.store",
@@ -152,6 +152,7 @@ pub fn update_settings(
     let launch_at_login_changed = patch.launch_at_login.is_some();
     let launch_at_login_value = patch.launch_at_login;
     let tray_changed = patch.tray.is_some();
+    let alerts_changed = patch.alerts.is_some();
     let store = &state.store;
     let mut updated = store
         .load_settings()
@@ -175,6 +176,16 @@ pub fn update_settings(
                 updated.rate_unit == crate::settings::RateUnit::Bits,
             );
         }
+    }
+    // Phase 07: alert settings apply live (notification switch, quiet
+    // hours, and the action master gate — the runner reads the mirror on
+    // every fire, so disabling takes effect immediately).
+    if alerts_changed {
+        *state
+            .alerts
+            .config
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = updated.alerts;
     }
     // Launch-at-login: the OS login item follows the persisted setting
     // only when the user changes it — never applied silently at startup.
@@ -277,7 +288,7 @@ pub fn get_history(
         max_points: max_points.unwrap_or(monitor_history::DEFAULT_MAX_POINTS),
     };
     // The writer owns the DB connection; queries need their own handle.
-    let query_conn = open_history_query_connection(state)?;
+    let query_conn = open_history_query_connection(&state)?;
     monitor_history::get_history(query_conn.connection(), &query)
         .map_err(|err| CommandError::store(err.to_string()))
 }
@@ -296,13 +307,13 @@ pub fn clear_history(
             reason: None,
         });
     }
-    let conn = open_history_query_connection(state)?;
+    let conn = open_history_query_connection(&state)?;
     monitor_history::clear_samples(conn.connection())
         .map_err(|err| CommandError::store(err.to_string()))
 }
 
-fn open_history_query_connection(
-    state: State<'_, AppState>,
+pub(crate) fn open_history_query_connection(
+    state: &AppState,
 ) -> Result<monitor_history::HistoryStore, CommandError> {
     let dir = state
         .history_dir

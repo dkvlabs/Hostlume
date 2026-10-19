@@ -43,6 +43,9 @@ pub struct AppState {
     pub scans: crate::storage::ScanRegistry,
     /// History database directory (for read-side query connections).
     pub history_dir: Mutex<Option<std::path::PathBuf>>,
+    /// Alert rule engine + live alert-settings mirror + action concurrency
+    /// counter (phase 07).
+    pub alerts: Arc<crate::alerts::AlertRuntime>,
 }
 
 impl AppState {

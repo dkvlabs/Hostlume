@@ -20,7 +20,7 @@
 | FX-014 | Bluetooth accessory battery | Yes | P1 | 05 | in_progress | macOS system_profiler probe (literal args, hashed ids); parser fixture-tested; live charge needs an accessory; Windows not implemented yet |
 | FX-015 | Menu bar / system tray monitors | Yes | P1 | 06 | in_progress | macOS tray live-validated (icon + live CPU title + close-to-tray + pause/resume); pause/resume scheduler-tested; Windows/Linux compile-gated |
 | FX-016 | Widgets / native mini-dashboard | Yes (macOS) | P1 | 06 | platform_limited | WidgetKit explicitly gated (no signing identity — no fake widget); compact floating monitor fallback implemented on the shared snapshot bus |
-| FX-017 | Notifications and local opt-in actions | Yes | P1 | 07 | planned | Hysteresis, cooldown, safe trigger tests |
+| FX-017 | Notifications and local opt-in actions | Yes | P1 | 07 | implemented | Deterministic hold/hysteresis/cooldown/restart engine (139 Rust tests); live macOS smoke: real-metric fire (CPU 79.9%) + audit episode + restart no-double-fire + UNUserNotificationCenter prompt; actions = no-args approved launch, double-gated default-off, audited (ADR-0007); Windows/Linux compile-gated |
 | FX-018 | Comparison, recording, CSV export | Yes | P1 | 08 | planned | Series alignment; CSV import/export |
 | FX-019 | Mobile web monitor / read-only REST API | Yes | P1 | 08 | planned | Auth/TLS/loopback tests, no write routes |
 | FX-020 | Preferences, themes, retention, i18n | Yes (subset) | P0 | 01/09 | in_progress | Persistent schema migrations, UI states |
@@ -67,3 +67,13 @@ Use a real commit and real log reference only when available. A verification per
 | FX-016 | macOS / Apple M3 Max | <phase-06 sha> | gate review | GATED — WidgetKit needs signed extension; compact floating monitor implemented as fallback | no native widget | docs/decisions/, docs/progress/PHASE-06.md |
 | FX-015 | Windows | — | compile verification pending CI | NOT RUN (no hardware) | Explorer restart/DPI/overflow untested | `tray.rs` (cross-platform Tauri tray) |
 | FX-015 | Linux | — | compile verification pending CI | NOT RUN (no desktop session) | GNOME-no-tray fallback untested | `tray.rs` + `toggle_compact_window` |
+
+## Phase 07 evidence records (19.10.2026)
+
+| FX ID | OS / hardware | Build commit | Validation type | Result | Limitation | Log / test path |
+|---|---|---|---|---|---|---|
+| FX-017 | macOS / Apple M3 Max | <phase-07 sha> | live app smoke (seeded rules) | PASS — real-metric fire (CPU 79.9%), `alert_events` episode persisted without action config; restart did NOT re-fire (cooldown restored); clean SIGTERM exit | dev-mode notifications attribute to Terminal (bundled builds use app id) | docs/progress/PHASE-07.md |
+| FX-017 | macOS / Apple M3 Max | <phase-07 sha> | deterministic engine tests (virtual time) | PASS — hold/hysteresis/cooldown/sleep-gap/missing-sample/restart scenarios | — | `crates/monitor-alerts/src/engine.rs` tests |
+| FX-017 | macOS / Apple M3 Max | <phase-07 sha> | action security tests | PASS — both gates required, stored config revalidated, no-args literal-launcher spawn, hard timeout kills runaway child | argument arrays deferred (security tooling; ADR-0007) | `apps/desktop/src-tauri/src/actions.rs` tests |
+| FX-017 | macOS / Apple M3 Max | <phase-07 sha> | UI tests | PASS — 97 frontend tests (rule editor gates, fixture probe, honest notification state) | — | `src/features/alerts/*.test.tsx` |
+| FX-017 | Windows / Linux | — | compile verification pending CI | NOT RUN (cross targets not installed) | notifications + `unsupported_on_platform` action refusal unvalidated at runtime | `alerts.rs` (platform branches) |

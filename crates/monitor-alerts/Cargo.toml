@@ -1,0 +1,15 @@
+[package]
+name = "monitor-alerts"
+description = "Deterministic threshold-alert rule engine (phase 07)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+monitor-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
