@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 7;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 8;
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -183,6 +183,11 @@ pub struct Settings {
     pub launch_at_login: bool,
     /// Alert notifications, quiet hours and the local-action master gate.
     pub alerts: AlertsConfig,
+    /// Optional read-only remote server (phase 08): mode + port only. The
+    /// access token lives here as its SHA-256 hash, managed exclusively by
+    /// the dedicated commands (never user-patchable).
+    pub remote: monitor_remote::RemoteConfig,
+    pub remote_token_hash: Option<String>,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -212,6 +217,8 @@ impl Default for Settings {
             tray: TrayConfig::default(),
             launch_at_login: false,
             alerts: AlertsConfig::default(),
+            remote: monitor_remote::RemoteConfig::default(),
+            remote_token_hash: None,
         }
     }
 }
@@ -239,6 +246,8 @@ pub enum SettingsError {
     ExternalLookupTimeoutOutOfBounds { value: u32 },
     #[error("quiet-hours minute {value} is outside 0..={max}")]
     QuietMinuteOutOfBounds { value: u16, max: u16 },
+    #[error("remote port {value} is outside {min}..={max}")]
+    RemotePortOutOfBounds { value: u16, min: u16, max: u16 },
 }
 
 impl Settings {
@@ -302,6 +311,11 @@ impl Settings {
                 max: QUIET_MINUTE_MAX,
             });
         }
+        self.remote.validate().map_err(|error| match error {
+            monitor_remote::ConfigError::PortOutOfBounds { value, min, max } => {
+                SettingsError::RemotePortOutOfBounds { value, min, max }
+            }
+        })?;
         Ok(())
     }
 
@@ -477,7 +491,70 @@ impl Default for SettingsV6 {
 }
 
 impl SettingsV6 {
-    pub fn into_v7(self) -> Settings {
+    pub fn into_v7(self) -> SettingsV7 {
+        SettingsV7 {
+            schema_version: 7,
+            appearance: self.appearance,
+            compact_mode: self.compact_mode,
+            polling_base_seconds: self.polling_base_seconds,
+            close_to_tray: self.close_to_tray,
+            locale: self.locale,
+            overview_cards: self.overview_cards,
+            history: self.history,
+            rate_unit: self.rate_unit,
+            external_lookup: self.external_lookup,
+            temperature_unit: self.temperature_unit,
+            tray: self.tray,
+            launch_at_login: self.launch_at_login,
+            alerts: AlertsConfig::default(),
+        }
+    }
+}
+
+/// The v7 row shape (adds the alert settings of phase 07; predates the
+/// optional remote server of phase 08).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsV7 {
+    pub schema_version: u32,
+    pub appearance: Appearance,
+    pub compact_mode: bool,
+    pub polling_base_seconds: u32,
+    pub close_to_tray: bool,
+    pub locale: String,
+    pub overview_cards: Vec<OverviewCard>,
+    pub history: HistoryRetention,
+    pub rate_unit: RateUnit,
+    pub external_lookup: ExternalLookup,
+    pub temperature_unit: TemperatureUnit,
+    pub tray: TrayConfig,
+    pub launch_at_login: bool,
+    pub alerts: AlertsConfig,
+}
+
+impl Default for SettingsV7 {
+    fn default() -> Self {
+        Self {
+            schema_version: 7,
+            appearance: Appearance::System,
+            compact_mode: false,
+            polling_base_seconds: POLLING_DEFAULT_SECS,
+            close_to_tray: false,
+            locale: DEFAULT_LOCALE.to_string(),
+            overview_cards: default_overview_cards(),
+            history: HistoryRetention::default(),
+            rate_unit: RateUnit::default(),
+            external_lookup: ExternalLookup::default(),
+            temperature_unit: TemperatureUnit::default(),
+            tray: TrayConfig::default(),
+            launch_at_login: false,
+            alerts: AlertsConfig::default(),
+        }
+    }
+}
+
+impl SettingsV7 {
+    pub fn into_v8(self) -> Settings {
         Settings {
             schema_version: SETTINGS_SCHEMA_VERSION,
             appearance: self.appearance,
@@ -492,7 +569,9 @@ impl SettingsV6 {
             temperature_unit: self.temperature_unit,
             tray: self.tray,
             launch_at_login: self.launch_at_login,
-            alerts: AlertsConfig::default(),
+            alerts: self.alerts,
+            remote: monitor_remote::RemoteConfig::default(),
+            remote_token_hash: None,
         }
     }
 }
@@ -702,6 +781,7 @@ impl SettingsV1 {
         .into_v5()
         .into_v6()
         .into_v7()
+        .into_v8()
     }
 }
 
@@ -868,7 +948,13 @@ mod tests {
             }],
             ..SettingsV2::default()
         };
-        let migrated = v2.into_v3().into_v4().into_v5().into_v6().into_v7();
+        let migrated = v2
+            .into_v3()
+            .into_v4()
+            .into_v5()
+            .into_v6()
+            .into_v7()
+            .into_v8();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.appearance, Appearance::Light);
@@ -880,13 +966,41 @@ mod tests {
     }
 
     #[test]
+    fn v7_settings_migrate_to_v8_with_remote_off() {
+        let v7 = SettingsV7 {
+            appearance: Appearance::Dark,
+            polling_base_seconds: 9,
+            ..SettingsV7::default()
+        };
+        let migrated = v7.into_v8();
+        migrated.validate().expect("migrated settings valid");
+        assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.polling_base_seconds, 9);
+        // Phase 08: the remote server ships OFF with no token on file.
+        assert_eq!(migrated.remote.mode, monitor_remote::RemoteMode::Off);
+        assert!(migrated.remote_token_hash.is_none());
+    }
+
+    #[test]
+    fn remote_port_bounds_are_enforced() {
+        let mut s = Settings::default();
+        s.remote.port = 80;
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemotePortOutOfBounds { value: 80, .. })
+        ));
+        s.remote.port = monitor_remote::DEFAULT_PORT;
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
     fn v5_settings_migrate_to_v6_with_tray_defaults() {
         let v5 = SettingsV5 {
             appearance: Appearance::Dark,
             polling_base_seconds: 7,
             ..SettingsV5::default()
         };
-        let migrated = v5.into_v6().into_v7();
+        let migrated = v5.into_v6().into_v7().into_v8();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.polling_base_seconds, 7);
@@ -901,7 +1015,7 @@ mod tests {
             polling_base_seconds: 9,
             ..SettingsV6::default()
         };
-        let migrated = v6.into_v7();
+        let migrated = v6.into_v7().into_v8();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.polling_base_seconds, 9);
@@ -936,7 +1050,7 @@ mod tests {
             }],
             ..SettingsV4::default()
         };
-        let migrated = v4.into_v5().into_v6().into_v7();
+        let migrated = v4.into_v5().into_v6().into_v7().into_v8();
         migrated.validate().expect("migrated settings valid");
         assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert!(!migrated.overview_cards[0].visible);

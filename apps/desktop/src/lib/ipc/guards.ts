@@ -11,6 +11,7 @@ import type {
   Availability,
   CapabilityReport,
   CommandErrorPayload,
+  CsvExportResult,
   DiagnosticsReport,
   HistoryResponse,
   GpuAdapter,
@@ -21,6 +22,9 @@ import type {
   NotificationStateInfo,
   ProcessActionResult,
   ProcessPage,
+  RecordingSession,
+  RemoteSetup,
+  RemoteStatus,
   RuleProbe,
   Settings,
   SystemSnapshot,
@@ -170,6 +174,13 @@ export function isSettings(value: unknown): value is Settings {
     !isFiniteNumber(alerts.quiet_start_minute) ||
     !isFiniteNumber(alerts.quiet_end_minute)
   ) {
+    return false;
+  }
+  const remote = value.remote;
+  if (!isRecord(remote)) return false;
+  if (!["off", "loopback", "lan"].includes(remote.mode as string)) return false;
+  if (!isFiniteNumber(remote.port)) return false;
+  if (value.remote_token_hash !== null && typeof value.remote_token_hash !== "string") {
     return false;
   }
   const lookup = value.external_lookup;
@@ -355,6 +366,47 @@ export function isRuleProbe(value: unknown): value is RuleProbe {
   }
   if (value.value !== null && !isFiniteNumber(value.value)) return false;
   return typeof value.crossing_now === "boolean" && typeof value.explanation === "string";
+}
+
+export function isRemoteStatus(value: unknown): value is RemoteStatus {
+  if (!isRecord(value)) return false;
+  if (!["off", "loopback", "lan"].includes(value.mode as string)) return false;
+  if (!isFiniteNumber(value.port)) return false;
+  if (typeof value.running !== "boolean") return false;
+  if (typeof value.token_exists !== "boolean") return false;
+  return value.url === undefined || typeof value.url === "string";
+}
+
+export function isRemoteSetup(value: unknown): value is RemoteSetup {
+  if (!isRecord(value)) return false;
+  if (!isRemoteStatus(value.status)) return false;
+  return value.token_once === undefined || typeof value.token_once === "string";
+}
+
+export function isRecordingSession(value: unknown): value is RecordingSession {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== "string" || typeof value.label !== "string") return false;
+  if (!Array.isArray(value.metric_ids) || !value.metric_ids.every((m) => typeof m === "string")) {
+    return false;
+  }
+  if (!isFiniteNumber(value.started_at_utc_ms)) return false;
+  if (
+    value.ended_at_utc_ms !== undefined &&
+    value.ended_at_utc_ms !== null &&
+    !isFiniteNumber(value.ended_at_utc_ms)
+  ) {
+    return false;
+  }
+  return ["recording", "stopped", "interrupted"].includes(value.status as string);
+}
+
+export function isCsvExportResult(value: unknown): value is CsvExportResult {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    isFiniteNumber(value.rows) &&
+    typeof value.truncated === "boolean"
+  );
 }
 
 export function isNotificationStateInfo(value: unknown): value is NotificationStateInfo {

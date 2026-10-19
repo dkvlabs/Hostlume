@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::settings::{
     Settings, SettingsError, SettingsV1, SettingsV2, SettingsV3, SettingsV4, SettingsV5,
-    SettingsV6, SETTINGS_SCHEMA_VERSION,
+    SettingsV6, SettingsV7, SETTINGS_SCHEMA_VERSION,
 };
 
 /// One ordered schema migration. Checksums pin content: a database created
@@ -146,7 +146,7 @@ impl SettingsStore {
             return Ok(Settings::default());
         };
         match version {
-            1..=6 => {
+            1..=7 => {
                 // Load-time settings migration: stored preferences carry
                 // over, later additions take defaults, and the migrated row
                 // is persisted so migration happens once.
@@ -157,20 +157,27 @@ impl SettingsStore {
                         .into_v4()
                         .into_v5()
                         .into_v6()
-                        .into_v7(),
+                        .into_v7()
+                        .into_v8(),
                     3 => serde_json::from_str::<SettingsV3>(&json)?
                         .into_v4()
                         .into_v5()
                         .into_v6()
-                        .into_v7(),
+                        .into_v7()
+                        .into_v8(),
                     4 => serde_json::from_str::<SettingsV4>(&json)?
                         .into_v5()
                         .into_v6()
-                        .into_v7(),
+                        .into_v7()
+                        .into_v8(),
                     5 => serde_json::from_str::<SettingsV5>(&json)?
                         .into_v6()
-                        .into_v7(),
-                    _ => serde_json::from_str::<SettingsV6>(&json)?.into_v7(),
+                        .into_v7()
+                        .into_v8(),
+                    6 => serde_json::from_str::<SettingsV6>(&json)?
+                        .into_v7()
+                        .into_v8(),
+                    _ => serde_json::from_str::<SettingsV7>(&json)?.into_v8(),
                 };
                 self.save_settings(&migrated)?;
                 Ok(migrated)

@@ -8,6 +8,8 @@ import { listen } from "@tauri-apps/api/event";
 import {
   isAlertEventRow,
   isAlertRule,
+  isCsvExportResult,
+  isRecordingSession,
   isCapabilityReport,
   isGpuInfoReport,
   isDiagnosticsReport,
@@ -15,6 +17,8 @@ import {
   isNotificationStateInfo,
   isProcessActionResult,
   isProcessPage,
+  isRemoteSetup,
+  isRemoteStatus,
   isRuleProbe,
   isSettings,
   isSystemSnapshot,
@@ -23,6 +27,13 @@ import {
 import type {
   AlertEventRow,
   AlertRule,
+  CsvExportResult,
+  CsvExportSpec,
+  RecordingSession,
+  RecordingStart,
+  RemoteMode,
+  RemoteSetup,
+  RemoteStatus,
   CapabilityReport,
   GpuInfoReport,
   CommandErrorPayload,
@@ -291,6 +302,83 @@ export const ipc = {
   async testAlertRule(rule: AlertRule): Promise<RuleProbe> {
     try {
       return await invokeValidated("test_alert_rule", { rule }, isRuleProbe);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  // ---- Recording + CSV export (FX-018, phase 08) ---------------------------
+
+  async startRecording(request: RecordingStart): Promise<RecordingSession> {
+    try {
+      return await invokeValidated("start_recording", { request }, isRecordingSession);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async stopRecording(sessionId: string): Promise<void> {
+    await invoke("stop_recording", { sessionId });
+  },
+
+  async listRecordings(limit?: number): Promise<RecordingSession[]> {
+    const raw: unknown = await invoke("list_recordings", { limit });
+    if (!Array.isArray(raw)) {
+      throw new Error("list_recordings: response failed runtime validation");
+    }
+    return raw.map((row) => {
+      if (!isRecordingSession(row)) {
+        throw new Error("list_recordings: session failed runtime validation");
+      }
+      return row;
+    });
+  },
+
+  async exportCsv(spec: CsvExportSpec): Promise<CsvExportResult> {
+    try {
+      return await invokeValidated("export_csv", { spec }, isCsvExportResult);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async exportRecordingCsv(sessionId: string): Promise<CsvExportResult> {
+    try {
+      return await invokeValidated("export_recording_csv", { sessionId }, isCsvExportResult);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  // ---- Remote server (FX-019, phase 08) ------------------------------------
+
+  async getRemoteStatus(): Promise<RemoteStatus> {
+    try {
+      return await invokeValidated("get_remote_status", undefined, isRemoteStatus);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async configureRemote(mode: RemoteMode, port: number): Promise<RemoteSetup> {
+    try {
+      return await invokeValidated("configure_remote", { mode, port }, isRemoteSetup);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async rotateRemoteToken(): Promise<RemoteSetup> {
+    try {
+      return await invokeValidated("remote_rotate_token", undefined, isRemoteSetup);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async revokeRemoteToken(): Promise<RemoteStatus> {
+    try {
+      return await invokeValidated("remote_revoke_token", undefined, isRemoteStatus);
     } catch (err) {
       throw toIpcError(err);
     }

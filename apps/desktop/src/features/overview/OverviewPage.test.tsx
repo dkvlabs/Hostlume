@@ -51,6 +51,8 @@ function defaultSettings(): Settings {
           quiet_start_minute: 1320,
           quiet_end_minute: 480,
         },
+        remote: { mode: "off", port: 45454 },
+        remote_token_hash: null,
   };
 }
 

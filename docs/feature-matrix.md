@@ -21,8 +21,8 @@
 | FX-015 | Menu bar / system tray monitors | Yes | P1 | 06 | in_progress | macOS tray live-validated (icon + live CPU title + close-to-tray + pause/resume); pause/resume scheduler-tested; Windows/Linux compile-gated |
 | FX-016 | Widgets / native mini-dashboard | Yes (macOS) | P1 | 06 | platform_limited | WidgetKit explicitly gated (no signing identity — no fake widget); compact floating monitor fallback implemented on the shared snapshot bus |
 | FX-017 | Notifications and local opt-in actions | Yes | P1 | 07 | implemented | Deterministic hold/hysteresis/cooldown/restart engine (139 Rust tests); live macOS smoke: real-metric fire (CPU 79.9%) + audit episode + restart no-double-fire + UNUserNotificationCenter prompt; actions = no-args approved launch, double-gated default-off, audited (ADR-0007); Windows/Linux compile-gated |
-| FX-018 | Comparison, recording, CSV export | Yes | P1 | 08 | planned | Series alignment; CSV import/export |
-| FX-019 | Mobile web monitor / read-only REST API | Yes | P1 | 08 | planned | Auth/TLS/loopback tests, no write routes |
+| FX-018 | Comparison, recording, CSV export | Yes | P1 | 08 | implemented | Compare screen: ≤4 aligned ECharts series, unit axes, table view, range selection (unit-tested alignment machinery via bounded history queries); recording sessions with crash recovery (interrupted status) + CSV export (documented header, RFC quoting, formula escape, paged streaming, row ceiling); CSV import intentionally not implemented |
+| FX-019 | Mobile web monitor / read-only REST API | Yes | P1 | 08 | implemented (LAN platform_limited) | Loopback server live-validated: OFF→no listener (lsof), token auth 401 negatives, POST→405, kill/trash→404, private projection (no ipv4/hostname), bounded history, SSE cap, session cookie, clean exit frees port; LAN fails closed until TLS (ADR-0008) — second-device test deferred with it |
 | FX-020 | Preferences, themes, retention, i18n | Yes (subset) | P0 | 01/09 | in_progress | Persistent schema migrations, UI states |
 | FX-021 | User-facing capability diagnostics | Enhancement | P1 | 05 | in_progress | Merged per-family report (exactly-once test), reasoned unsupported rows, Sensors→Capabilities tab with re-probe |
 | FX-022 | Multi-computer monitoring | Enhancement | P3 | 10 (optional) | planned | Multi-agent secure pairing specification |
@@ -77,3 +77,13 @@ Use a real commit and real log reference only when available. A verification per
 | FX-017 | macOS / Apple M3 Max | <phase-07 sha> | action security tests | PASS — both gates required, stored config revalidated, no-args literal-launcher spawn, hard timeout kills runaway child | argument arrays deferred (security tooling; ADR-0007) | `apps/desktop/src-tauri/src/actions.rs` tests |
 | FX-017 | macOS / Apple M3 Max | <phase-07 sha> | UI tests | PASS — 97 frontend tests (rule editor gates, fixture probe, honest notification state) | — | `src/features/alerts/*.test.tsx` |
 | FX-017 | Windows / Linux | — | compile verification pending CI | NOT RUN (cross targets not installed) | notifications + `unsupported_on_platform` action refusal unvalidated at runtime | `alerts.rs` (platform branches) |
+
+## Phase 08 evidence records (19.10.2026)
+
+| FX ID | OS / hardware | Build commit | Validation type | Result | Limitation | Log / test path |
+|---|---|---|---|---|---|---|
+| FX-019 | macOS / Apple M3 Max | <phase-08 sha> | live smoke over loopback HTTP | PASS — OFF: no listener (lsof); seeded opt-in: 127.0.0.1:45454 LISTEN; no/bad token → 401; POST snapshot → 405; kill/trash routes → 404; snapshot payload contains no ipv4/hostname; history bounded (oversized range 400); SSE event captured; dashboard served; session cookie HttpOnly+SameSite=Strict; SIGTERM freed port | loopback only — LAN refused by design | docs/progress/PHASE-08.md |
+| FX-019 | monitor-remote crate | <phase-08 sha> | integration tests (real HTTP) | PASS — 8 tests: OFF/LAN fail-closed, token negatives, read-only methods, history bounds, session exchange, rotation invalidates token+sessions, SSE 503 at cap, flood → 429 | — | `crates/monitor-remote/tests/integration.rs` |
+| FX-018 | monitor-history crate | <phase-08 sha> | unit tests | PASS — session lifecycle/interrupt recovery/bounded lists; CSV paging cursors, RFC quoting + formula escape | UI-path export not manually clicked (commands unit-covered) | `crates/monitor-history/src/{sessions,export}.rs` tests |
+| FX-018 | frontend | <phase-08 sha> | vitest | PASS — 97 tests (guards for new payloads, settings fixtures) | Compare chart interaction manual pass pending | `src/features/compare/ComparePage.tsx` |
+| FX-018/019 | Windows / Linux | — | compile verification pending CI | NOT RUN (cross targets not installed) | runtime unvalidated | `crates/monitor-remote` (pure library, no platform gates) |

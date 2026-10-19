@@ -51,12 +51,16 @@ fn checksum_drift_and_future_db_are_refused() {
         let store = HistoryStore::open(&path).unwrap();
         drop(store);
     }
-    // Drifted migration list with same version but different SQL.
-    let drifted = &[Migration {
-        version: 1,
-        name: monitor_history::MIGRATIONS[0].name,
-        sql: "-- tampered",
-    }];
+    // Drifted migration list: same version, different SQL, plus the
+    // untampered remainder so the latest version still matches.
+    let drifted = &[
+        Migration {
+            version: 1,
+            name: monitor_history::MIGRATIONS[0].name,
+            sql: "-- tampered",
+        },
+        monitor_history::MIGRATIONS[1],
+    ];
     let mut conn = Connection::open(&path).unwrap();
     let err = apply_migrations(&mut conn, drifted).expect_err("drift refused");
     assert!(matches!(
@@ -76,7 +80,7 @@ fn checksum_drift_and_future_db_are_refused() {
     let err = HistoryStore::with_connection(conn).expect_err("future refused");
     assert!(matches!(
         err,
-        monitor_history::StoreError::DatabaseTooNew { db: 99, app: 1 }
+        monitor_history::StoreError::DatabaseTooNew { db: 99, app: 2 }
     ));
     cleanup(&path);
 }

@@ -9,6 +9,8 @@ pub mod alerts;
 pub mod collectors;
 pub mod commands;
 pub mod processes;
+pub mod recordings;
+pub mod remote;
 mod scheduler;
 mod settings;
 mod settings_store;
@@ -260,7 +262,7 @@ pub fn run() {
                 host_id: host_id.clone(),
                 generation: generation.clone(),
                 latest,
-                capabilities: Mutex::new(capabilities),
+                capabilities: Arc::new(Mutex::new(capabilities)),
                 capabilities_revision: capabilities_revision.clone(),
                 paused,
                 tray: tray_controller,
@@ -269,11 +271,17 @@ pub fn run() {
                 diagnostics,
                 scheduler: scheduler_handle,
                 history_writer: Mutex::new(Some(history_writer)),
-                processes: Mutex::new(processes::ProcessManager::new()),
+                processes: Arc::new(Mutex::new(processes::ProcessManager::new())),
                 scans: crate::storage::ScanRegistry::new(),
                 history_dir: Mutex::new(Some(history_dir)),
                 alerts: alert_runtime,
+                remote: Mutex::new(None),
             });
+            // Phase 08 startup: crash-recover recording sessions, then
+            // apply the persisted remote configuration — a listener starts
+            // only when the user opted in (loopback) AND a token exists.
+            recordings::recover_interrupted_recordings(&handle.state::<AppState>());
+            remote::apply_remote_at_startup(&handle.state::<AppState>());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -321,6 +329,15 @@ pub fn run() {
             alerts::get_notification_state,
             alerts::send_test_notification,
             alerts::test_alert_rule,
+            remote::get_remote_status,
+            remote::configure_remote,
+            remote::remote_rotate_token,
+            remote::remote_revoke_token,
+            recordings::start_recording,
+            recordings::stop_recording,
+            recordings::list_recordings,
+            recordings::export_csv,
+            recordings::export_recording_csv,
         ])
         .build(tauri::generate_context!())
         .expect("error while building APP_NAME")
@@ -329,6 +346,7 @@ pub fn run() {
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     state.scheduler.stop();
                     commands::shutdown_history(&state);
+                    remote::shutdown_remote(&state);
                 }
             }
         });

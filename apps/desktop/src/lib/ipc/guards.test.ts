@@ -145,6 +145,8 @@ describe("isSettings", () => {
     temperature_unit: "celsius",
     tray: { enabled: true, show_cpu: true, show_memory: true, show_network: true, show_title: true },
     launch_at_login: false,
+    remote: { mode: "off", port: 45454 },
+    remote_token_hash: null,
     alerts: {
       notifications_enabled: true,
       actions_enabled: false,

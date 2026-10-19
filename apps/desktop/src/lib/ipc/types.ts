@@ -146,6 +146,8 @@ export interface Settings {
   tray: TrayConfig;
   launch_at_login: boolean;
   alerts: AlertsConfig;
+  remote: RemoteConfig;
+  remote_token_hash: string | null;
 }
 
 /** Alert delivery settings (phase 07); actions default OFF. */
@@ -171,6 +173,8 @@ export interface SettingsPatch {
   tray?: TrayConfig;
   launch_at_login?: boolean;
   alerts?: AlertsConfig;
+  /** Remote configuration changes go through the dedicated
+   * `configure_remote` command (token-aware), not this patch. */
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */
@@ -378,4 +382,58 @@ export interface NotificationStateInfo {
   platform: "macos" | "windows" | "linux";
   state: "os_managed" | "not_applicable";
   detail_key: string;
+}
+
+// ---- Comparison, recording and CSV export (FX-018, phase 08) ---------------
+
+/** Mirrors `monitor_history::RecordingSession`. */
+export interface RecordingSession {
+  id: string;
+  label: string;
+  metric_ids: string[];
+  started_at_utc_ms: number;
+  ended_at_utc_ms?: number;
+  status: "recording" | "stopped" | "interrupted";
+}
+
+export interface RecordingStart {
+  label: string;
+  metric_ids: string[];
+}
+
+export interface CsvExportSpec {
+  metric_id: string;
+  entity_id: string;
+  from_utc_ms: number;
+  to_utc_ms: number;
+}
+
+export interface CsvExportResult {
+  path: string;
+  rows: number;
+  truncated: boolean;
+}
+
+// ---- Remote server (FX-019, phase 08) ---------------------------------------
+
+export type RemoteMode = "off" | "loopback" | "lan";
+
+export interface RemoteConfig {
+  mode: RemoteMode;
+  port: number;
+}
+
+/** Mirrors the Rust `RemoteStatus` command payload. */
+export interface RemoteStatus {
+  running: boolean;
+  mode: RemoteMode;
+  port: number;
+  url?: string;
+  token_exists: boolean;
+}
+
+export interface RemoteSetup {
+  status: RemoteStatus;
+  /** The full token, returned ONLY when a new one was generated. */
+  token_once?: string;
 }

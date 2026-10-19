@@ -19,8 +19,9 @@ pub struct AppState {
     /// `None`: the UI renders its honest "no sample yet" state, never zeros.
     pub latest: Arc<RwLock<Option<SystemSnapshot>>>,
     /// Merged capability report. Behind a mutex so the explicit re-probe
-    /// command can refresh it; consumers get a consistent clone.
-    pub capabilities: Mutex<CapabilityReport>,
+    /// command can refresh it; consumers get a consistent clone. Shared
+    /// with the remote server via `Arc` (read-only projection).
+    pub capabilities: Arc<Mutex<CapabilityReport>>,
     /// Shared with the scheduler; bumped when the report is re-probed so
     /// listeners re-render capability-dependent UI.
     pub capabilities_revision: Arc<AtomicU64>,
@@ -38,7 +39,8 @@ pub struct AppState {
     /// shared with the scheduler's snapshot tap. `None` after flush at exit.
     pub history_writer: Mutex<Option<Arc<BatchWriter>>>,
     /// Process manager for the Applications page and guarded actions.
-    pub processes: Mutex<ProcessManager>,
+    /// Shared (read-only) with the remote server's sanitized projection.
+    pub processes: Arc<Mutex<ProcessManager>>,
     /// Active storage scans (FX-008).
     pub scans: crate::storage::ScanRegistry,
     /// History database directory (for read-side query connections).
@@ -46,6 +48,9 @@ pub struct AppState {
     /// Alert rule engine + live alert-settings mirror + action concurrency
     /// counter (phase 07).
     pub alerts: Arc<crate::alerts::AlertRuntime>,
+    /// Running remote server (phase 08); `None` while the user keeps the
+    /// default OFF. Stopped on disable and on app exit.
+    pub remote: Mutex<Option<monitor_remote::RemoteServerHandle>>,
 }
 
 impl AppState {

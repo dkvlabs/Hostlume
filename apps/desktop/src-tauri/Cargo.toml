@@ -36,6 +36,7 @@ monitor-core = { workspace = true }
 monitor-history = { workspace = true }
 monitor-storage = { workspace = true }
 monitor-alerts = { workspace = true }
+monitor-remote = { workspace = true }
 monitor-platform-macos = { workspace = true }
 monitor-platform-windows = { workspace = true }
 monitor-platform-linux = { workspace = true }

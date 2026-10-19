@@ -13,24 +13,13 @@ import { NetworkPage } from "@/features/network/NetworkPage";
 import { OverviewPage } from "@/features/overview/OverviewPage";
 import { StoragePage } from "@/features/storage/StoragePage";
 import { SensorsPage } from "@/features/sensors/SensorsPage";
-import { PlaceholderPage } from "@/features/placeholder/PlaceholderPage";
+import { ComparePage } from "@/features/compare/ComparePage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { useT } from "@/lib/i18n";
-import type { MessageKey } from "@/lib/i18n/dictionaries";
 import { applyAppearance, resolveTheme, watchSystemTheme } from "@/lib/theme";
 import { useSettingsStore } from "@/stores/settingsStore";
 
-const PAGE_TITLE_KEYS: Record<PageId, MessageKey> = {
-  overview: "nav.overview",
-  applications: "nav.applications",
-  storage: "nav.storage",
-  network: "nav.network",
-  sensors: "nav.sensors",
-  compare: "nav.compare",
-  settings: "nav.settings",
-};
-
-function renderPage(page: PageId, title: string) {
+function renderPage(page: PageId) {
   switch (page) {
     case "overview":
       return <OverviewPage />;
@@ -45,7 +34,7 @@ function renderPage(page: PageId, title: string) {
     case "sensors":
       return <SensorsPage />;
     case "compare":
-      return <PlaceholderPage title={title} />;
+      return <ComparePage />;
   }
 }
 
@@ -54,7 +43,7 @@ export function App() {
   const settings = useSettingsStore((s) => s.settings);
   const loadSettings = useSettingsStore((s) => s.load);
   const t = useT();
-  const title = t(PAGE_TITLE_KEYS[page]);
+  const title = t(("nav." + page) as Parameters<typeof t>[0]);
 
   useTelemetry();
 
@@ -131,7 +120,7 @@ export function App() {
         <Sidebar active={page} onSelect={selectPage} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header pageTitle={title} />
-          <main className="min-h-0 flex-1 overflow-auto">{renderPage(page, title)}</main>
+          <main className="min-h-0 flex-1 overflow-auto">{renderPage(page)}</main>
           <footer className="flex h-8 shrink-0 items-center gap-3 border-t border-stroke px-5 text-xs text-muted">
             <span>{t("app.name")}</span>
             <span aria-hidden>·</span>

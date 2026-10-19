@@ -26,10 +26,11 @@ pub fn checksum_of(migration: &Migration) -> String {
     hex
 }
 
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "history_core",
-    sql: "CREATE TABLE metric_definitions (\n\
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "history_core",
+        sql: "CREATE TABLE metric_definitions (\n\
           \x20 metric_id TEXT PRIMARY KEY,\n\
           \x20 description TEXT NOT NULL,\n\
           \x20 unit TEXT NOT NULL,\n\
@@ -106,7 +107,14 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
           \x20 result TEXT NOT NULL,\n\
           \x20 detail TEXT\n\
           );",
-}];
+    },
+    Migration {
+        version: 2,
+        name: "recording_session_status",
+        sql: "ALTER TABLE recording_sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'stopped';\n\
+          \x20 UPDATE recording_sessions SET status = 'stopped';",
+    },
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {

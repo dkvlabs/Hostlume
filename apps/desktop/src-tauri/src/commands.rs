@@ -43,7 +43,7 @@ impl CommandError {
         }
     }
 
-    fn settings_invalid(reason: String) -> Self {
+    pub(crate) fn settings_invalid(reason: String) -> Self {
         Self {
             code: "SETTINGS_INVALID",
             message_key: "errors.settingsInvalid",
