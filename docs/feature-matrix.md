@@ -10,7 +10,7 @@
 | FX-004 | Disks/mounts/capacity/external drives | Yes | P0 | 02 | in_progress | Add/remove devices; eject guarded |
 | FX-005 | Configurable overview dashboard | Yes | P0 | 02 | in_progress | Real snapshot subscription; responsive |
 | FX-006 | Network interfaces, addresses and speeds | Yes | P0 | 02 | in_progress | Per-adapter bytes/sec, resets/gaps |
-| FX-007 | Applications/process history and quit | Yes | P0 | 03 | planned | PID+start-time validation, permission handling |
+| FX-007 | Applications/process history and quit | Yes | P0 | 03 | in_progress | PID+start-time validation, permission handling |
 | FX-008 | Disk visualizer, large files, Move to Trash | Yes | P0 | 04 | planned | Cancel, safe symlinks, native Trash |
 | FX-009 | Disk I/O read/write counters and rates | Yes | P1 | 04 | planned | Real adapter-based source + test |
 | FX-010 | GPU utilization, memory, displays | Yes | P1 | 05 | planned | Native drivers; honest unsupported states |

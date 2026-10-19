@@ -5,6 +5,7 @@
  * back and are surfaced, never silently swallowed.
  */
 import { useState } from "react";
+import { ConfirmActionDialog } from "@/components/ui/ConfirmActionDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { LOCALES, useT } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/dictionaries";
+import { ipc } from "@/lib/ipc/client";
 import type { Appearance } from "@/lib/ipc/types";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -28,6 +30,8 @@ export function SettingsPage() {
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
   const [feedback, setFeedback] = useState<"saved" | "failed" | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearFeedback, setClearFeedback] = useState<boolean | null>(null);
 
   if (!settings) {
     return (
@@ -208,6 +212,72 @@ export function SettingsPage() {
           ))}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("history.title")}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <p className="text-xs text-muted">{t("history.retention")}</p>
+          {(
+            [
+              ["raw_hours", "history.rawHours", 720],
+              ["rollup_1m_days", "history.rollup1m", 730],
+              ["rollup_1h_days", "history.rollup1h", 3650],
+            ] as const
+          ).map(([field, labelKey, max]) => (
+            <div key={field} className="grid items-center gap-2 sm:grid-cols-[16rem_1fr]">
+              <Label htmlFor={`history-${field}`}>{t(labelKey)}</Label>
+              <Slider
+                id={`history-${field}`}
+                min={0}
+                max={max}
+                step={field === "raw_hours" ? 1 : 30}
+                value={[settings.history[field]]}
+                aria-label={t(labelKey)}
+                onValueCommit={([value]) => {
+                  if (value !== undefined) {
+                    void patch({ history: { ...settings.history, [field]: value } });
+                  }
+                }}
+              />
+              <span className="numeric text-xs text-muted sm:col-start-2">
+                {settings.history[field]}
+              </span>
+            </div>
+          ))}
+          <Separator />
+          <Button
+            variant="destructive"
+            className="w-fit"
+            onClick={() => setConfirmClear(true)}
+          >
+            {t("history.clear")}
+          </Button>
+          {clearFeedback ? (
+            <p className="text-xs text-muted" role="status">
+              {t("history.cleared")}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {confirmClear ? (
+        <ConfirmActionDialog
+          open
+          destructive
+          title={t("history.clearConfirmTitle")}
+          body={t("history.clearConfirmBody")}
+          confirmLabel={t("history.clear")}
+          onConfirm={() => {
+            void ipc
+              .clearHistory(`settings-${Date.now()}`)
+              .then(() => setClearFeedback(true))
+              .catch(() => setClearFeedback(false));
+          }}
+          onCancel={() => setConfirmClear(false)}
+        />
+      ) : null}
 
       <Separator className="mt-2" />
       <Button variant="ghost" size="sm" className="w-fit" onClick={() => void patch({})}>

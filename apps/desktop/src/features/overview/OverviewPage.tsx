@@ -10,30 +10,27 @@ import { useT } from "@/lib/i18n";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTelemetryStore } from "@/stores/telemetryStore";
 import { CpuCard, HostCard, MemoryCard, NetworkCard, StorageCard } from "./cards";
+import type { HistoryRange } from "@/lib/useHistorySeries";
 
-/** Sparkline window -> sample counts, bounded by ring-buffer span (3 s cadence). */
-const RANGE_SAMPLES: Record<number, number> = {
-  60: 20,
-  300: 100,
-  900: 300,
-};
+/** Time ranges: <=15 min ring buffer, 1 h / 24 h database-backed. */
+const RANGE_OPTIONS: HistoryRange[] = [60, 300, 900, 3_600, 86_400];
 
 function TimeRangeControl({
   range,
   onChange,
 }: {
-  range: number;
-  onChange: (seconds: number) => void;
+  range: HistoryRange;
+  onChange: (seconds: HistoryRange) => void;
 }) {
   const t = useT();
   return (
     <div className="flex items-center gap-1" role="group" aria-label="Time range">
-      {[60, 300, 900].map((seconds) => (
+      {RANGE_OPTIONS.map((seconds) => (
         <Button
           key={seconds}
           size="sm"
           variant={range === seconds ? "default" : "ghost"}
-          onClick={() => onChange(seconds)}
+          onClick={() => onChange(seconds as HistoryRange)}
           aria-pressed={range === seconds}
           title={t("status.lastUpdate")}
         >
@@ -50,8 +47,7 @@ export function OverviewPage() {
   const error = useTelemetryStore((s) => s.error);
   const snapshot = useTelemetryStore((s) => s.snapshot);
   const cards = useSettingsStore((s) => s.settings?.overview_cards);
-  const [range, setRange] = useState(60);
-  const samples = RANGE_SAMPLES[range] ?? 20;
+  const [range, setRange] = useState<HistoryRange>(60);
 
   if (connection === "error") {
     return (
@@ -83,10 +79,10 @@ export function OverviewPage() {
   }
 
   const cardMap: Record<string, React.ReactNode> = {
-    cpu: <CpuCard samples={samples} />,
-    memory: <MemoryCard samples={samples} />,
+    cpu: <CpuCard range={range} />,
+    memory: <MemoryCard range={range} />,
     storage: <StorageCard />,
-    network: <NetworkCard samples={samples} />,
+    network: <NetworkCard range={range} />,
     host: <HostCard />,
   };
 

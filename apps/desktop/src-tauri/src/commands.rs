@@ -4,10 +4,14 @@
 
 use std::sync::atomic::Ordering;
 
+use std::sync::Arc;
+
 use monitor_core::{CapabilityReport, SystemSnapshot};
+use monitor_history::{HistoryQuery, HistoryResponse};
 use serde::Serialize;
 use tauri::State;
 
+use crate::processes::{ProcessActionRequest, ProcessActionResult, ProcessPage};
 use crate::settings::SettingsPatch;
 use crate::state::AppState;
 
@@ -106,4 +110,138 @@ pub fn update_settings(
         .polling_secs
         .store(updated.polling_base_seconds, Ordering::Relaxed);
     Ok(updated)
+}
+
+/// Process table for the Applications page. Polled by the frontend while
+/// the page is visible (single bounded source — never per-row timers).
+#[tauri::command]
+pub fn get_process_page(state: State<'_, AppState>) -> ProcessPage {
+    let mut manager = state
+        .processes
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let logical_cores = state
+        .latest
+        .read()
+        .ok()
+        .and_then(|guard| {
+            guard.as_ref().and_then(|snapshot| {
+                snapshot
+                    .metrics
+                    .iter()
+                    .find(|r| r.metric_id == monitor_core::families::HOST_CPU_CORES_LOGICAL)
+                    .and_then(|r| match r.value {
+                        Some(monitor_core::MetricValue::Number(n)) => Some(n as usize),
+                        _ => None,
+                    })
+            })
+        })
+        .unwrap_or(0);
+    manager.page(&monitor_core::SystemClock, logical_cores)
+}
+
+/// Guarded process termination. The Rust identity recheck (PID + start
+/// time) is the security boundary; the result is audited locally.
+#[tauri::command]
+pub fn request_process_action(
+    state: State<'_, AppState>,
+    request: ProcessActionRequest,
+) -> ProcessActionResult {
+    let outcome = {
+        let mut manager = state
+            .processes
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        manager.request_action(&request)
+    };
+    state.record_audit(
+        request.pid,
+        request.start_time_sec,
+        &request.mode,
+        &format!("{:?}", outcome.outcome),
+        None,
+    );
+    outcome
+}
+
+/// Bounded history query. Metric ids are checked against the family
+/// registry; range and point count validated inside monitor-history.
+#[tauri::command]
+pub fn get_history(
+    state: State<'_, AppState>,
+    metric_id: String,
+    entity_id: String,
+    from_utc_ms: i64,
+    to_utc_ms: i64,
+    max_points: Option<u32>,
+) -> Result<HistoryResponse, CommandError> {
+    if !monitor_core::families::ALL_FAMILIES.contains(&metric_id.as_str()) {
+        return Err(CommandError {
+            code: "HISTORY_INVALID",
+            message_key: "errors.historyInvalid",
+            reason: Some("unknown metric_id".to_string()),
+        });
+    }
+    let settings = state
+        .store
+        .load_settings()
+        .map_err(|err| CommandError::store(err.to_string()))?;
+    let query = HistoryQuery {
+        host_id: state.host_id.clone(),
+        metric_id,
+        entity_id,
+        from_utc_ms,
+        to_utc_ms,
+        cadence_ms: (settings.polling_base_seconds.max(1) as i64) * 1_000,
+        max_points: max_points.unwrap_or(monitor_history::DEFAULT_MAX_POINTS),
+    };
+    // The writer owns the DB connection; queries need their own handle.
+    let query_conn = open_history_query_connection(state)?;
+    monitor_history::get_history(query_conn.connection(), &query)
+        .map_err(|err| CommandError::store(err.to_string()))
+}
+
+/// Explicit, user-confirmed history wipe (samples only; settings, audits
+/// and schema untouched).
+#[tauri::command]
+pub fn clear_history(
+    state: State<'_, AppState>,
+    confirmation_id: String,
+) -> Result<monitor_history::RetentionSummary, CommandError> {
+    if confirmation_id.trim().is_empty() {
+        return Err(CommandError {
+            code: "HISTORY_CONFIRMATION_REQUIRED",
+            message_key: "errors.historyConfirmation",
+            reason: None,
+        });
+    }
+    let conn = open_history_query_connection(state)?;
+    monitor_history::clear_samples(conn.connection())
+        .map_err(|err| CommandError::store(err.to_string()))
+}
+
+fn open_history_query_connection(
+    state: State<'_, AppState>,
+) -> Result<monitor_history::HistoryStore, CommandError> {
+    let dir = state
+        .history_dir
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    let Some(dir) = dir else {
+        return Err(CommandError::store("history directory not set".into()));
+    };
+    monitor_history::HistoryStore::open(&dir.join("history.sqlite3"))
+        .map_err(|err| CommandError::store(err.to_string()))
+}
+
+/// Flush and stop the history writer (called before app exit).
+pub fn shutdown_history(state: &AppState) {
+    let mut guard = state
+        .history_writer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    if let Some(mut writer) = guard.take() {
+        let _ = Arc::get_mut(&mut writer).map(|w| w.shutdown());
+    }
 }

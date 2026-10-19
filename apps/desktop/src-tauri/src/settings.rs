@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 2;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 3;
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -23,6 +23,30 @@ pub const DEFAULT_LOCALE: &str = "en";
 
 /// Overview card ids (FX-005). Order in `overview_cards` is display order.
 pub const OVERVIEW_CARD_IDS: &[&str] = &["cpu", "memory", "storage", "network", "host"];
+
+/// History retention bounds. 0 means "keep this tier forever"; the defaults
+/// mirror the contract proposal (raw 24h, 1m 30d, 1h 365d).
+pub const RAW_HOURS_MAX: u32 = 720;
+pub const ROLLUP_1M_DAYS_MAX: u32 = 730;
+pub const ROLLUP_1H_DAYS_MAX: u32 = 3650;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HistoryRetention {
+    pub raw_hours: u32,
+    pub rollup_1m_days: u32,
+    pub rollup_1h_days: u32,
+}
+
+impl Default for HistoryRetention {
+    fn default() -> Self {
+        Self {
+            raw_hours: monitor_history::DEFAULT_RAW_HOURS,
+            rollup_1m_days: monitor_history::DEFAULT_ROLLUP_1M_DAYS,
+            rollup_1h_days: monitor_history::DEFAULT_ROLLUP_1H_DAYS,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -51,6 +75,7 @@ pub struct Settings {
     pub close_to_tray: bool,
     pub locale: String,
     pub overview_cards: Vec<OverviewCard>,
+    pub history: HistoryRetention,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -73,6 +98,7 @@ impl Default for Settings {
             close_to_tray: false,
             locale: DEFAULT_LOCALE.to_string(),
             overview_cards: default_overview_cards(),
+            history: HistoryRetention::default(),
         }
     }
 }
@@ -94,6 +120,8 @@ pub enum SettingsError {
     DuplicateOverviewCard { id: String },
     #[error("overview card list must not be empty")]
     EmptyOverviewCards,
+    #[error("history retention {field}={value} is outside the supported range")]
+    HistoryRetentionOutOfBounds { field: &'static str, value: u32 },
 }
 
 impl Settings {
@@ -134,6 +162,7 @@ impl Settings {
             }
             seen.push(card.id.clone());
         }
+        self.history.validate()?;
         Ok(())
     }
 
@@ -158,6 +187,25 @@ impl Settings {
         if let Some(overview_cards) = patch.overview_cards {
             self.overview_cards = overview_cards;
         }
+        if let Some(history) = patch.history {
+            self.history = history;
+        }
+    }
+}
+
+impl HistoryRetention {
+    pub fn validate(&self) -> Result<(), SettingsError> {
+        let checks: [(&'static str, u32, u32); 3] = [
+            ("raw_hours", self.raw_hours, RAW_HOURS_MAX),
+            ("rollup_1m_days", self.rollup_1m_days, ROLLUP_1M_DAYS_MAX),
+            ("rollup_1h_days", self.rollup_1h_days, ROLLUP_1H_DAYS_MAX),
+        ];
+        for (field, value, max) in checks {
+            if value > max {
+                return Err(SettingsError::HistoryRetentionOutOfBounds { field, value });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -172,6 +220,49 @@ pub struct SettingsPatch {
     pub close_to_tray: Option<bool>,
     pub locale: Option<String>,
     pub overview_cards: Option<Vec<OverviewCard>>,
+    pub history: Option<HistoryRetention>,
+}
+
+/// The v2 row shape (adds `overview_cards`, predates `history`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsV2 {
+    pub schema_version: u32,
+    pub appearance: Appearance,
+    pub compact_mode: bool,
+    pub polling_base_seconds: u32,
+    pub close_to_tray: bool,
+    pub locale: String,
+    pub overview_cards: Vec<OverviewCard>,
+}
+
+impl Default for SettingsV2 {
+    fn default() -> Self {
+        Self {
+            schema_version: 2,
+            appearance: Appearance::System,
+            compact_mode: false,
+            polling_base_seconds: POLLING_DEFAULT_SECS,
+            close_to_tray: false,
+            locale: DEFAULT_LOCALE.to_string(),
+            overview_cards: default_overview_cards(),
+        }
+    }
+}
+
+impl SettingsV2 {
+    pub fn into_v3(self) -> Settings {
+        Settings {
+            schema_version: SETTINGS_SCHEMA_VERSION,
+            appearance: self.appearance,
+            compact_mode: self.compact_mode,
+            polling_base_seconds: self.polling_base_seconds,
+            close_to_tray: self.close_to_tray,
+            locale: self.locale,
+            overview_cards: self.overview_cards,
+            history: HistoryRetention::default(),
+        }
+    }
 }
 
 /// The v1 row shape, kept verbatim for the load-time migration.
@@ -200,10 +291,10 @@ impl Default for SettingsV1 {
 }
 
 impl SettingsV1 {
-    /// Carry every v1 field into v2 and append the default card layout.
-    pub fn into_v2(self) -> Settings {
-        Settings {
-            schema_version: SETTINGS_SCHEMA_VERSION,
+    /// Carry every v1 field forward; later additions take defaults.
+    pub fn into_latest(self) -> Settings {
+        SettingsV2 {
+            schema_version: 2,
             appearance: self.appearance,
             compact_mode: self.compact_mode,
             polling_base_seconds: self.polling_base_seconds,
@@ -211,6 +302,7 @@ impl SettingsV1 {
             locale: self.locale,
             overview_cards: default_overview_cards(),
         }
+        .into_v3()
     }
 }
 
@@ -330,10 +422,10 @@ mod tests {
         assert!(!s.overview_cards[1].visible);
         assert!(!s.compact_mode, "unpatched fields must stay untouched");
 
-        s.schema_version = 3;
+        s.schema_version = SETTINGS_SCHEMA_VERSION + 1;
         assert!(matches!(
             s.validate(),
-            Err(SettingsError::UnsupportedSchemaVersion { found: 3, .. })
+            Err(SettingsError::UnsupportedSchemaVersion { .. })
         ));
     }
 
@@ -345,23 +437,60 @@ mod tests {
     }
 
     #[test]
-    fn v1_settings_migrate_into_v2_with_defaults() {
+    fn v1_settings_migrate_to_latest_with_defaults() {
         let v1 = SettingsV1 {
             appearance: Appearance::Dark,
             polling_base_seconds: 7,
             locale: "ro".into(),
             ..SettingsV1::default()
         };
-        let v2 = v1.clone().into_v2();
-        v2.validate().expect("migrated settings valid");
-        assert_eq!(v2.schema_version, 2);
-        assert_eq!(v2.appearance, Appearance::Dark);
-        assert_eq!(v2.polling_base_seconds, 7);
-        assert_eq!(v2.locale, "ro");
-        assert_eq!(v2.overview_cards, default_overview_cards());
+        let migrated = v1.clone().into_latest();
+        migrated.validate().expect("migrated settings valid");
+        assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
+        assert_eq!(migrated.appearance, Appearance::Dark);
+        assert_eq!(migrated.polling_base_seconds, 7);
+        assert_eq!(migrated.locale, "ro");
+        assert_eq!(migrated.overview_cards, default_overview_cards());
+        assert_eq!(migrated.history, HistoryRetention::default());
         // Old rows deserialize as v1 exactly (round-trip safety of fixture).
         let json = serde_json::to_string(&v1).unwrap();
         let back: SettingsV1 = serde_json::from_str(&json).unwrap();
         assert_eq!(back, v1);
+    }
+
+    #[test]
+    fn v2_settings_migrate_to_v3_with_history_defaults() {
+        let v2 = SettingsV2 {
+            appearance: Appearance::Light,
+            overview_cards: vec![OverviewCard {
+                id: "cpu".into(),
+                visible: false,
+            }],
+            ..SettingsV2::default()
+        };
+        let migrated = v2.into_v3();
+        migrated.validate().expect("migrated settings valid");
+        assert_eq!(migrated.schema_version, 3);
+        assert_eq!(migrated.appearance, Appearance::Light);
+        assert!(!migrated.overview_cards[0].visible);
+        assert_eq!(
+            migrated.history.raw_hours,
+            monitor_history::DEFAULT_RAW_HOURS
+        );
+    }
+
+    #[test]
+    fn history_retention_bounds_are_enforced() {
+        let mut s = Settings::default();
+        s.history.raw_hours = RAW_HOURS_MAX + 1;
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::HistoryRetentionOutOfBounds {
+                field: "raw_hours",
+                ..
+            })
+        ));
+        s.history.raw_hours = 0; // keep-forever is legal
+        assert!(s.validate().is_ok());
     }
 }

@@ -52,6 +52,7 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "monitor-core",
+ "monitor-history",
  "monitor-platform-linux",
  "monitor-platform-macos",
  "monitor-platform-windows",
@@ -2095,6 +2096,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "monitor-history"
+version = "0.1.0"
+dependencies = [
+ "monitor-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "uuid",
 ]
 
 [[package]]

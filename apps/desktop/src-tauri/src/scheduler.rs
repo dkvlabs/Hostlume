@@ -44,6 +44,10 @@ pub struct TelemetryEventPayload {
 /// Emitter seam so the loop is unit-testable without a Tauri AppHandle.
 pub type TelemetryEmitter = Arc<dyn Fn(&TelemetryEventPayload) + Send + Sync>;
 
+/// Called with each published snapshot right after it is stored (used by
+/// the history writer; the snapshot carries host_id and generation).
+pub type SnapshotTap = Option<Arc<dyn Fn(&SystemSnapshot) + Send + Sync>>;
+
 /// Interval source seam: production reads the settings-backed atomic; tests
 /// inject tiny intervals to drive many ticks quickly.
 pub type IntervalSource = Arc<dyn Fn() -> Duration + Send + Sync>;
@@ -106,6 +110,7 @@ pub fn spawn(
     capabilities_revision: Arc<AtomicU64>,
     diagnostics: DiagnosticsMap,
     emit: TelemetryEmitter,
+    snapshot_tap: SnapshotTap,
 ) -> SchedulerHandle {
     let collectors_list: Vec<Box<dyn Collector>> = vec![
         Box::new(collectors::CpuCollector::new()),
@@ -124,6 +129,7 @@ pub fn spawn(
         capabilities_revision,
         diagnostics,
         emit,
+        snapshot_tap,
         fast_interval,
         MEDIUM_INTERVAL,
         SLOW_INTERVAL,
@@ -141,6 +147,7 @@ pub fn spawn_engine(
     capabilities_revision: Arc<AtomicU64>,
     diagnostics: DiagnosticsMap,
     emit: TelemetryEmitter,
+    snapshot_tap: SnapshotTap,
     fast_interval: IntervalSource,
     medium_interval: Duration,
     slow_interval: Duration,
@@ -161,6 +168,7 @@ pub fn spawn_engine(
             capabilities_revision,
             diagnostics,
             emit,
+            snapshot_tap,
             current: HashMap::new(),
             sequence: 0,
             clock: SystemClock,
@@ -181,6 +189,7 @@ struct Engine {
     capabilities_revision: Arc<AtomicU64>,
     diagnostics: DiagnosticsMap,
     emit: TelemetryEmitter,
+    snapshot_tap: SnapshotTap,
     current: HashMap<(String, String), MetricReading>,
     sequence: u64,
     clock: SystemClock,
@@ -267,6 +276,13 @@ impl Engine {
         snapshot.capabilities_revision = self.capabilities_revision.load(Ordering::Relaxed);
         if let Ok(mut guard) = self.latest.write() {
             *guard = Some(snapshot);
+        }
+        if let Some(tap) = &self.snapshot_tap {
+            if let Ok(guard) = self.latest.read() {
+                if let Some(published) = guard.as_ref() {
+                    tap(published);
+                }
+            }
         }
         TelemetryEventPayload {
             schema_version: monitor_core::SCHEMA_VERSION,
@@ -492,6 +508,7 @@ mod tests {
             caps_rev.clone(),
             diagnostics.clone(),
             emit,
+            None,
             Arc::new(|| Duration::from_millis(10)),
             Duration::from_millis(20),
             Duration::from_millis(30),
@@ -574,6 +591,7 @@ mod tests {
             caps_rev.clone(),
             diagnostics,
             Arc::new(|_| {}),
+            None,
             Arc::new(|| Duration::from_millis(300)),
             Duration::from_millis(400),
             Duration::from_secs(60),
@@ -621,6 +639,7 @@ mod tests {
             caps_rev.clone(),
             diagnostics,
             emit,
+            None,
             Arc::new(|| Duration::from_millis(10)),
             Duration::from_secs(60),
             Duration::from_secs(60),

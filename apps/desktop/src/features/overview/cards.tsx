@@ -2,7 +2,7 @@
  * Overview cards (FX-001..006) — every value comes from the live snapshot
  * store; unavailable data renders as explicit states, never zeros.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { MetricAvailability } from "@/components/metric/MetricAvailability";
 import { Sparkline } from "@/components/metric/Sparkline";
 import { Badge } from "@/components/ui/badge";
@@ -19,19 +19,13 @@ import {
   entityLabel,
   findReading,
   formatUptime,
-  metricKey,
   numericValue,
   readingsFor,
   textValue,
 } from "@/lib/metrics";
+import { useHistorySeries, type HistoryRange } from "@/lib/useHistorySeries";
 import { formatByUnit } from "@/lib/formatting/units";
 import { useTelemetryStore } from "@/stores/telemetryStore";
-
-function useHistory(metricId: string, entityId: string, samples: number) {
-  const history = useTelemetryStore((s) => s.history);
-  const series = history[metricKey(metricId, entityId)];
-  return useMemo(() => series?.last(samples) ?? [], [series, samples]);
-}
 
 function UnavailableNote({ reasonCode }: { reasonCode?: string }) {
   return (
@@ -42,14 +36,15 @@ function UnavailableNote({ reasonCode }: { reasonCode?: string }) {
   );
 }
 
-export function CpuCard({ samples }: { samples: number }) {
+export function CpuCard({ range }: { range: HistoryRange }) {
   const t = useT();
   const snapshot = useTelemetryStore((s) => s.snapshot);
   const total = findReading(snapshot, "cpu.total.usage");
   const cores = readingsFor(snapshot, "cpu.core.usage").sort((a, b) =>
     a.entity_id.localeCompare(b.entity_id, undefined, { numeric: true })
   );
-  const totalPoints = useHistory("cpu.total.usage", "host", samples);
+  const series = useHistorySeries("cpu.total.usage", "host", range);
+  const totalPoints = series.points;
   const totalValue = numericValue(total);
 
   return (
@@ -66,7 +61,20 @@ export function CpuCard({ samples }: { samples: number }) {
         ) : (
           <>
             <p className="numeric text-2xl font-semibold">{formatByUnit(totalValue, "percent", 1)}</p>
-            <Sparkline points={totalPoints} ariaLabel={t("overview.card.cpu")} className="mt-2 h-10 w-full" />
+            <Sparkline
+              points={totalPoints}
+              maxGapMs={Math.max(30_000, (range / 10) * 1_000)}
+              ariaLabel={t("overview.card.cpu")}
+              className="mt-2 h-10 w-full"
+            />
+            {series.gaps.length > 0 || series.missingRatio !== null ? (
+              <p className="numeric mt-1 text-[10px] text-muted">
+                {series.gaps.length} {t("history.gaps")}
+                {series.missingRatio !== null
+                  ? ` · ${(series.missingRatio * 100).toFixed(0)}% ${t("history.missing")}`
+                  : ""}
+              </p>
+            ) : null}
           </>
         )}
         <p className="mt-3 mb-1 text-xs font-medium text-muted">{t("overview.perCore")}</p>
@@ -96,14 +104,14 @@ export function CpuCard({ samples }: { samples: number }) {
   );
 }
 
-export function MemoryCard({ samples }: { samples: number }) {
+export function MemoryCard({ range }: { range: HistoryRange }) {
   const t = useT();
   const snapshot = useTelemetryStore((s) => s.snapshot);
   const used = findReading(snapshot, "memory.physical.used");
   const total = findReading(snapshot, "memory.physical.total");
   const swapUsed = findReading(snapshot, "memory.swap.used");
   const swapTotal = findReading(snapshot, "memory.swap.total");
-  const points = useHistory("memory.physical.used", "host", samples);
+  const points = useHistorySeries("memory.physical.used", "host", range).points;
   const usedValue = numericValue(used);
   const totalValue = numericValue(total);
   const percent =
@@ -208,7 +216,7 @@ export function StorageCard() {
   );
 }
 
-export function NetworkCard({ samples }: { samples: number }) {
+export function NetworkCard({ range }: { range: HistoryRange }) {
   const t = useT();
   const snapshot = useTelemetryStore((s) => s.snapshot);
   const interfaces = readingsFor(snapshot, "net.interface.rx_rate");
@@ -231,8 +239,8 @@ export function NetworkCard({ samples }: { samples: number }) {
   const txTotal = selected ? findReading(snapshot, "net.interface.tx_total", selected) : undefined;
   const ipv4 = selected ? textValue(findReading(snapshot, "net.interface.ipv4", selected)) : null;
   const ipv6 = selected ? textValue(findReading(snapshot, "net.interface.ipv6", selected)) : null;
-  const rxPoints = useHistory("net.interface.rx_rate", selected ?? "", samples);
-  const txPoints = useHistory("net.interface.tx_rate", selected ?? "", samples);
+  const rxPoints = useHistorySeries("net.interface.rx_rate", selected ?? "", range).points;
+  const txPoints = useHistorySeries("net.interface.tx_rate", selected ?? "", range).points;
   const rxValue = numericValue(rxRate);
   const txValue = numericValue(txRate);
 

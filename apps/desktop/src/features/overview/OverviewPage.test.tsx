@@ -38,6 +38,7 @@ function defaultSettings(): Settings {
       { id: "network", visible: true },
       { id: "host", visible: true },
     ],
+    history: { raw_hours: 24, rollup_1m_days: 30, rollup_1h_days: 365 },
   };
 }
 

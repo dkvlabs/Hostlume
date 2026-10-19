@@ -9,8 +9,11 @@ import type {
   CapabilityReport,
   CommandErrorPayload,
   DiagnosticsReport,
+  HistoryResponse,
   MetricCapability,
   MetricReading,
+  ProcessActionResult,
+  ProcessPage,
   Settings,
   SystemSnapshot,
   TelemetryEventPayload,
@@ -126,7 +129,14 @@ export function isSettings(value: unknown): value is Settings {
   if (typeof value.close_to_tray !== "boolean") return false;
   if (typeof value.locale !== "string") return false;
   if (!Array.isArray(value.overview_cards)) return false;
-  return value.overview_cards.every((card) => isOverviewCardPref(card));
+  if (!value.overview_cards.every((card) => isOverviewCardPref(card))) return false;
+  const history = value.history;
+  if (!isRecord(history)) return false;
+  return (
+    isFiniteNumber(history.raw_hours) &&
+    isFiniteNumber(history.rollup_1m_days) &&
+    isFiniteNumber(history.rollup_1h_days)
+  );
 }
 
 export function isDiagnosticsReport(value: unknown): value is DiagnosticsReport {
@@ -149,6 +159,63 @@ export function isCommandErrorPayload(value: unknown): value is CommandErrorPayl
     typeof value.code === "string" &&
     typeof value.messageKey === "string" &&
     (value.reason === undefined || typeof value.reason === "string")
+  );
+}
+
+export function isProcessPage(value: unknown): value is ProcessPage {
+  if (!isRecord(value)) return false;
+  if (typeof value.collected_at_utc !== "string") return false;
+  if (typeof value.cpuWarmup !== "boolean") return false;
+  if (typeof value.logicalCores !== "number") return false;
+  if (!Array.isArray(value.rows)) return false;
+  return value.rows.every((row) => {
+    if (!isRecord(row)) return false;
+    return (
+      typeof row.pid === "number" &&
+      typeof row.startTimeSec === "number" &&
+      typeof row.name === "string" &&
+      typeof row.rssBytes === "number" &&
+      (row.cpuUsageCores === null || isFiniteNumber(row.cpuUsageCores)) &&
+      (row.cpuUsageHost === null || isFiniteNumber(row.cpuUsageHost)) &&
+      typeof row.status === "string" &&
+      (row.parentPid === null || typeof row.parentPid === "number")
+    );
+  });
+}
+
+const ACTION_OUTCOMES = [
+  "ok",
+  "identity_changed",
+  "process_exited",
+  "protected_target",
+  "permission_denied",
+  "unsupported_on_platform",
+  "failed",
+] as const;
+
+export function isProcessActionResult(value: unknown): value is ProcessActionResult {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.outcome === "string" &&
+    (ACTION_OUTCOMES as readonly string[]).includes(value.outcome) &&
+    typeof value.pid === "number" &&
+    typeof value.startTimeSec === "number" &&
+    typeof value.mode === "string"
+  );
+}
+
+export function isHistoryResponse(value: unknown): value is HistoryResponse {
+  if (!isRecord(value)) return false;
+  if (typeof value.metric_id !== "string" || typeof value.entity_id !== "string") return false;
+  if (!["raw", "rollup_1m", "rollup_1h"].includes(value.resolution as string)) return false;
+  if (!Array.isArray(value.points) || !Array.isArray(value.gaps)) return false;
+  if (typeof value.missing_ratio !== "number") return false;
+  return value.points.every(
+    (p) =>
+      isRecord(p) &&
+      typeof p.ts_utc_ms === "number" &&
+      typeof p.value === "number" &&
+      (p.count === null || typeof p.count === "number")
   );
 }
 

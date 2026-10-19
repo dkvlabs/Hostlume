@@ -139,6 +139,7 @@ describe("isSettings", () => {
     close_to_tray: false,
     locale: "en",
     overview_cards: [{ id: "cpu", visible: true }],
+    history: { raw_hours: 24, rollup_1m_days: 30, rollup_1h_days: 365 },
   };
 
   it("accepts valid settings", () => {

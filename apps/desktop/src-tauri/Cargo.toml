@@ -30,6 +30,7 @@ sysinfo = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
 monitor-core = { workspace = true }
+monitor-history = { workspace = true }
 monitor-platform-macos = { workspace = true }
 monitor-platform-windows = { workspace = true }
 monitor-platform-linux = { workspace = true }

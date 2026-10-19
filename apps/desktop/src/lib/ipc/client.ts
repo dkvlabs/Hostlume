@@ -8,6 +8,9 @@ import { listen } from "@tauri-apps/api/event";
 import {
   isCapabilityReport,
   isDiagnosticsReport,
+  isHistoryResponse,
+  isProcessActionResult,
+  isProcessPage,
   isSettings,
   isSystemSnapshot,
   isTelemetryEventPayload,
@@ -16,6 +19,11 @@ import type {
   CapabilityReport,
   CommandErrorPayload,
   DiagnosticsReport,
+  HistoryResponse,
+  HistoryQuerySpec,
+  ProcessActionRequest,
+  ProcessActionResult,
+  ProcessPage,
   Settings,
   SettingsPatch,
   SystemSnapshot,
@@ -100,6 +108,38 @@ export const ipc = {
     } catch (err) {
       throw toIpcError(err);
     }
+  },
+
+  async getProcessPage(): Promise<ProcessPage> {
+    try {
+      return await invokeValidated("get_process_page", undefined, isProcessPage);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async requestProcessAction(request: ProcessActionRequest): Promise<ProcessActionResult> {
+    try {
+      return await invokeValidated(
+        "request_process_action",
+        { request },
+        isProcessActionResult
+      );
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async getHistory(spec: HistoryQuerySpec): Promise<HistoryResponse> {
+    try {
+      return await invokeValidated("get_history", { ...spec }, isHistoryResponse);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async clearHistory(confirmationId: string): Promise<void> {
+    await invoke("clear_history", { confirmationId });
   },
 };
 

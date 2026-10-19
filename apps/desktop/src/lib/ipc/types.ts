@@ -84,6 +84,12 @@ export interface OverviewCardPref {
   visible: boolean;
 }
 
+export interface HistoryRetention {
+  raw_hours: number;
+  rollup_1m_days: number;
+  rollup_1h_days: number;
+}
+
 export interface Settings {
   schema_version: number;
   appearance: Appearance;
@@ -92,6 +98,7 @@ export interface Settings {
   close_to_tray: boolean;
   locale: string;
   overview_cards: OverviewCardPref[];
+  history: HistoryRetention;
 }
 
 export interface SettingsPatch {
@@ -101,6 +108,7 @@ export interface SettingsPatch {
   close_to_tray?: boolean;
   locale?: string;
   overview_cards?: OverviewCardPref[];
+  history?: HistoryRetention;
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */
@@ -123,6 +131,81 @@ export interface CommandErrorPayload {
   code: string;
   messageKey: string;
   reason?: string;
+}
+
+/** One row of the process table (FX-007). Identity = pid + startTimeSec. */
+export interface ProcessRow {
+  pid: number;
+  startTimeSec: number;
+  name: string;
+  rssBytes: number;
+  /** Core-equivalent percent (can exceed 100); null during warm-up. */
+  cpuUsageCores: number | null;
+  /** Host-normalized 0–100; null during warm-up. */
+  cpuUsageHost: number | null;
+  status: string;
+  parentPid: number | null;
+}
+
+export interface ProcessPage {
+  collectedAtUtc: string;
+  cpuWarmup: boolean;
+  logicalCores: number;
+  rows: ProcessRow[];
+}
+
+export type ProcessActionMode = "graceful" | "force";
+
+export interface ProcessActionRequest {
+  pid: number;
+  startTimeSec: number;
+  mode: ProcessActionMode;
+  confirmationId: string;
+}
+
+export type ActionOutcome =
+  | "ok"
+  | "identity_changed"
+  | "process_exited"
+  | "protected_target"
+  | "permission_denied"
+  | "unsupported_on_platform"
+  | "failed";
+
+export interface ProcessActionResult {
+  outcome: ActionOutcome;
+  pid: number;
+  startTimeSec: number;
+  mode: string;
+}
+
+export interface HistoryPoint {
+  ts_utc_ms: number;
+  value: number;
+  count: number | null;
+}
+
+export interface HistoryGap {
+  from_utc_ms: number;
+  to_utc_ms: number;
+  reason: string;
+}
+
+export interface HistoryResponse {
+  metric_id: string;
+  entity_id: string;
+  resolution: "raw" | "rollup_1m" | "rollup_1h";
+  points: HistoryPoint[];
+  gaps: HistoryGap[];
+  missing_ratio: number;
+}
+
+export interface HistoryQuerySpec {
+  metric_id: string;
+  entity_id: string;
+  from_utc_ms: number;
+  to_utc_ms: number;
+  max_points?: number;
 }
 
 /** Lightweight push on every scheduler tick (ADR-0003). */

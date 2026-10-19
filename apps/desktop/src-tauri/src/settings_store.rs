@@ -10,7 +10,7 @@ use monitor_core::{Clock, SystemClock};
 use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
-use crate::settings::{Settings, SettingsError, SettingsV1, SETTINGS_SCHEMA_VERSION};
+use crate::settings::{Settings, SettingsError, SettingsV1, SettingsV2, SETTINGS_SCHEMA_VERSION};
 
 /// One ordered schema migration. Checksums pin content: a database created
 /// by a different build is refused instead of silently diverged.
@@ -143,12 +143,14 @@ impl SettingsStore {
             return Ok(Settings::default());
         };
         match version {
-            1 => {
-                // Load-time settings migration v1 -> v2 (FX-005 layout): the
-                // stored preferences carry over and defaults are appended.
-                // The migrated row is persisted so migration happens once.
-                let v1: SettingsV1 = serde_json::from_str(&json)?;
-                let migrated = v1.into_v2();
+            1 | 2 => {
+                // Load-time settings migration: stored preferences carry
+                // over, later additions take defaults, and the migrated row
+                // is persisted so migration happens once.
+                let migrated = match version {
+                    1 => serde_json::from_str::<SettingsV1>(&json)?.into_latest(),
+                    _ => serde_json::from_str::<SettingsV2>(&json)?.into_v3(),
+                };
                 self.save_settings(&migrated)?;
                 Ok(migrated)
             }
@@ -404,7 +406,10 @@ mod tests {
             .unwrap();
         }
         let migrated = store.load_settings().unwrap();
-        assert_eq!(migrated.schema_version, 2);
+        assert_eq!(
+            migrated.schema_version,
+            crate::settings::SETTINGS_SCHEMA_VERSION
+        );
         assert_eq!(migrated.appearance, crate::settings::Appearance::Dark);
         assert_eq!(migrated.polling_base_seconds, 5);
         assert_eq!(migrated.locale, "ro");
@@ -424,8 +429,32 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, crate::settings::SETTINGS_SCHEMA_VERSION as i64);
         drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn v2_row_migrates_to_v3_on_load() {
+        let path = temp_db_path("settings-v2-migration");
+        let store = SettingsStore::open(&path).unwrap();
+        let v2_json = r#"{"schema_version":2,"appearance":"light","compact_mode":false,"polling_base_seconds":9,"close_to_tray":true,"locale":"en","overview_cards":[{"id":"cpu","visible":false}]}"#;
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO app_settings (key, schema_version, json_value) VALUES ('app', 2, ?1)",
+                rusqlite::params![v2_json],
+            )
+            .unwrap();
+        }
+        let migrated = store.load_settings().unwrap();
+        assert_eq!(migrated.schema_version, 3);
+        assert_eq!(migrated.polling_base_seconds, 9);
+        assert!(!migrated.overview_cards[0].visible);
+        assert_eq!(
+            migrated.history,
+            crate::settings::HistoryRetention::default()
+        );
         cleanup(&path);
     }
 }

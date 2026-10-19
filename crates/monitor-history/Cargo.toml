@@ -1,0 +1,18 @@
+[package]
+name = "monitor-history"
+description = "SQLite telemetry history: migrations, bounded batch writer, rollups, retention and bounded queries"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+monitor-core = { workspace = true }
+rusqlite = { workspace = true }
+sha2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true }

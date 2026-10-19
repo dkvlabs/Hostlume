@@ -44,6 +44,7 @@ function settings(overrides: Partial<Settings> = {}): Settings {
       { id: "network", visible: true },
       { id: "host", visible: true },
     ],
+    history: { raw_hours: 24, rollup_1m_days: 30, rollup_1h_days: 365 },
     ...overrides,
   };
 }
@@ -80,10 +81,20 @@ describe("App shell", () => {
     expect(screen.queryByText(/\d+(\.\d+)?%/)).not.toBeInTheDocument();
   });
 
-  it("later-phase pages state that they are not implemented yet", async () => {
+  it("Applications renders the real process table (phase 03)", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(await screen.findByRole("button", { name: /Applications/ }));
+    expect(await screen.findByRole("searchbox")).toBeInTheDocument();
+    // Warm-up placeholder until the first 10 s poll resolves (IPC mocked:
+    // get_process_page is not part of this mock — the honest empty state shows).
+    expect(screen.getByText(/Collecting|No processes/i)).toBeInTheDocument();
+  });
+
+  it("later-phase pages state that they are not implemented yet", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Storage/ }));
     expect(await screen.findByText("Not implemented yet")).toBeInTheDocument();
     expect(screen.getByTestId("not-implemented")).toBeInTheDocument();
   });
@@ -96,12 +107,12 @@ describe("App shell", () => {
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
   });
 
-  it("Ctrl+2 navigates to the second page", async () => {
+  it("Ctrl+2 navigates to the second page (Applications)", async () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("button", { name: /Overview/ });
     await user.keyboard("{Control>}2{/Control}");
-    expect(await screen.findByText("Not implemented yet")).toBeInTheDocument();
+    expect(await screen.findByRole("searchbox")).toBeInTheDocument();
   });
 
   it("applies the loaded theme to the document and language", async () => {

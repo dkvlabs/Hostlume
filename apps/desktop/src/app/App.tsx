@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Header } from "@/app/Header";
 import { PAGE_IDS, Sidebar, type PageId } from "@/app/Sidebar";
 import { useTelemetry } from "@/app/useTelemetry";
+import { ApplicationsPage } from "@/features/applications/ApplicationsPage";
 import { OverviewPage } from "@/features/overview/OverviewPage";
 import { PlaceholderPage } from "@/features/placeholder/PlaceholderPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
@@ -33,6 +34,7 @@ function renderPage(page: PageId, title: string) {
     case "settings":
       return <SettingsPage />;
     case "applications":
+      return <ApplicationsPage />;
     case "storage":
     case "network":
     case "sensors":
