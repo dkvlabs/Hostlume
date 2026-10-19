@@ -7,6 +7,7 @@
 //! null value — collectors never fabricate numbers.
 
 pub mod cpu;
+pub mod disk_io;
 pub mod disks;
 pub mod host;
 pub mod memory;
@@ -15,6 +16,7 @@ pub mod network;
 use monitor_core::{Availability, Clock, MetricReading, MetricUnit, MetricValue};
 
 pub use cpu::CpuCollector;
+pub use disk_io::DiskIoCollector;
 pub use disks::DisksCollector;
 pub use host::HostCollector;
 pub use memory::MemoryCollector;

@@ -45,6 +45,8 @@ function settings(overrides: Partial<Settings> = {}): Settings {
       { id: "host", visible: true },
     ],
     history: { raw_hours: 24, rollup_1m_days: 30, rollup_1h_days: 365 },
+    rate_unit: "bytes" as const,
+    external_lookup: { enabled: false, provider: "ipify", timeout_secs: 5 },
     ...overrides,
   };
 }
@@ -94,9 +96,27 @@ describe("App shell", () => {
   it("later-phase pages state that they are not implemented yet", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Storage/ }));
+    await user.click(await screen.findByRole("button", { name: /Sensors/ }));
     expect(await screen.findByText("Not implemented yet")).toBeInTheDocument();
     expect(screen.getByTestId("not-implemented")).toBeInTheDocument();
+  });
+
+  it("Storage page shows the scan controls (phase 04)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Storage/ }));
+    expect(await screen.findByRole("textbox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Scan" })).toBeInTheDocument();
+  });
+
+  it("Network page shows the interface selector (phase 04)", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Network/ }));
+    // Gateway label renders as its own text node followed by the honest
+    // "not exposed" value.
+    expect(await screen.findByText(/Gateway/)).toBeInTheDocument();
+    expect(await screen.findByText("Not exposed by this source")).toBeInTheDocument();
   });
 
   it("Ctrl+, opens Settings", async () => {

@@ -3,10 +3,11 @@ resolver = "2"
 members = [
     "crates/monitor-core",
     "crates/monitor-history",
+    "crates/monitor-storage",
     "crates/monitor-platform-macos",
     "crates/monitor-platform-windows",
     "crates/monitor-platform-linux",
-    "apps/desktop/src-tauri",
+    "apps/desktop/src-tauri", "crates/monitor-storage",
 ]
 
 [workspace.package]
@@ -18,6 +19,7 @@ repository = "https://github.com/dkvlabs/Hostlume"
 [workspace.dependencies]
 monitor-core = { path = "crates/monitor-core" }
 monitor-history = { path = "crates/monitor-history" }
+monitor-storage = { path = "crates/monitor-storage" }
 monitor-platform-macos = { path = "crates/monitor-platform-macos" }
 monitor-platform-windows = { path = "crates/monitor-platform-windows" }
 monitor-platform-linux = { path = "crates/monitor-platform-linux" }

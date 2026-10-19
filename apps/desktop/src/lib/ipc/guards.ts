@@ -132,10 +132,20 @@ export function isSettings(value: unknown): value is Settings {
   if (!value.overview_cards.every((card) => isOverviewCardPref(card))) return false;
   const history = value.history;
   if (!isRecord(history)) return false;
+  if (
+    !isFiniteNumber(history.raw_hours) ||
+    !isFiniteNumber(history.rollup_1m_days) ||
+    !isFiniteNumber(history.rollup_1h_days)
+  ) {
+    return false;
+  }
+  if (!["bytes", "bits"].includes(value.rate_unit as string)) return false;
+  const lookup = value.external_lookup;
+  if (!isRecord(lookup)) return false;
   return (
-    isFiniteNumber(history.raw_hours) &&
-    isFiniteNumber(history.rollup_1m_days) &&
-    isFiniteNumber(history.rollup_1h_days)
+    typeof lookup.enabled === "boolean" &&
+    typeof lookup.provider === "string" &&
+    isFiniteNumber(lookup.timeout_secs)
   );
 }
 

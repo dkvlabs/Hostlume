@@ -11,10 +11,10 @@
 | FX-005 | Configurable overview dashboard | Yes | P0 | 02 | in_progress | Real snapshot subscription; responsive |
 | FX-006 | Network interfaces, addresses and speeds | Yes | P0 | 02 | in_progress | Per-adapter bytes/sec, resets/gaps |
 | FX-007 | Applications/process history and quit | Yes | P0 | 03 | in_progress | PID+start-time validation, permission handling |
-| FX-008 | Disk visualizer, large files, Move to Trash | Yes | P0 | 04 | planned | Cancel, safe symlinks, native Trash |
-| FX-009 | Disk I/O read/write counters and rates | Yes | P1 | 04 | planned | Real adapter-based source + test |
+| FX-008 | Disk visualizer, large files, Move to Trash | Yes | P0 | 04 | in_progress | Cancel, safe symlinks, native Trash |
+| FX-009 | Disk I/O read/write counters and rates | Yes | P1 | 04 | in_progress | Real adapter-based source + test |
 | FX-010 | GPU utilization, memory, displays | Yes | P1 | 05 | planned | Native drivers; honest unsupported states |
-| FX-011 | Advanced network history/map/IP info | Yes | P1 | 04 | planned | Interface switching; external lookup opt-in |
+| FX-011 | Advanced network history/map/IP info | Yes | P1 | 04 | in_progress | Interface switching; external lookup opt-in |
 | FX-012 | Temperatures and fan sensors | Yes | P1 | 05 | planned | Sensor names, temperature units, provenance |
 | FX-013 | Battery cycles/health/charge/time | Yes | P1 | 05 | planned | Battery-less machine and live battery tests |
 | FX-014 | Bluetooth accessory battery | Yes | P1 | 05 | planned | Supported device enumeration/availability |

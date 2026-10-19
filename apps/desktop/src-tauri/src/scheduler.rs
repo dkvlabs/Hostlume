@@ -118,6 +118,7 @@ pub fn spawn(
         Box::new(collectors::MemoryCollector::new()),
         Box::new(collectors::HostCollector::new()),
         Box::new(collectors::DisksCollector::new()),
+        Box::new(collectors::DiskIoCollector::new()),
     ];
     let fast_interval: IntervalSource =
         Arc::new(move || Duration::from_secs(polling_secs.load(Ordering::Relaxed).max(1) as u64));

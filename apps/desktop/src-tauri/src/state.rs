@@ -29,6 +29,8 @@ pub struct AppState {
     pub history_writer: Mutex<Option<Arc<BatchWriter>>>,
     /// Process manager for the Applications page and guarded actions.
     pub processes: Mutex<ProcessManager>,
+    /// Active storage scans (FX-008).
+    pub scans: crate::storage::ScanRegistry,
     /// History database directory (for read-side query connections).
     pub history_dir: Mutex<Option<std::path::PathBuf>>,
 }

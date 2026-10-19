@@ -90,6 +90,14 @@ export interface HistoryRetention {
   rollup_1h_days: number;
 }
 
+export type RateUnit = "bytes" | "bits";
+
+export interface ExternalLookup {
+  enabled: boolean;
+  provider: string;
+  timeout_secs: number;
+}
+
 export interface Settings {
   schema_version: number;
   appearance: Appearance;
@@ -99,6 +107,8 @@ export interface Settings {
   locale: string;
   overview_cards: OverviewCardPref[];
   history: HistoryRetention;
+  rate_unit: RateUnit;
+  external_lookup: ExternalLookup;
 }
 
 export interface SettingsPatch {
@@ -109,6 +119,8 @@ export interface SettingsPatch {
   locale?: string;
   overview_cards?: OverviewCardPref[];
   history?: HistoryRetention;
+  rate_unit?: RateUnit;
+  external_lookup?: ExternalLookup;
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */
@@ -206,6 +218,48 @@ export interface HistoryQuerySpec {
   from_utc_ms: number;
   to_utc_ms: number;
   max_points?: number;
+}
+
+// ---- Storage analyzer (FX-008) -------------------------------------------
+
+export interface ScanProgress {
+  visited_entries: number;
+  visited_bytes: number;
+  error_count: number;
+  done: boolean;
+  cancelled: boolean;
+}
+
+export interface ScanStatus {
+  scanId: string;
+  root: string;
+  progress: ScanProgress;
+}
+
+export interface ChildEntry {
+  index: number;
+  name: string;
+  is_dir: boolean;
+  is_symlink: boolean;
+  is_mount_boundary: boolean;
+  logicalSize: number;
+  allocatedSize: number;
+  errorCount: number;
+}
+
+export interface ScanChildren {
+  children: ChildEntry[];
+  total_children: number;
+  end_of_list: boolean;
+  node_index: number;
+  errors: number;
+  skippedCount: number;
+}
+
+export interface TrashPathResult {
+  path: string;
+  ok: boolean;
+  detail?: string;
 }
 
 /** Lightweight push on every scheduler tick (ADR-0003). */

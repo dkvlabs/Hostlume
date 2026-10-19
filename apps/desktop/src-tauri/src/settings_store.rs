@@ -10,7 +10,9 @@ use monitor_core::{Clock, SystemClock};
 use rusqlite::{Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
-use crate::settings::{Settings, SettingsError, SettingsV1, SettingsV2, SETTINGS_SCHEMA_VERSION};
+use crate::settings::{
+    Settings, SettingsError, SettingsV1, SettingsV2, SettingsV3, SETTINGS_SCHEMA_VERSION,
+};
 
 /// One ordered schema migration. Checksums pin content: a database created
 /// by a different build is refused instead of silently diverged.
@@ -149,7 +151,10 @@ impl SettingsStore {
                 // is persisted so migration happens once.
                 let migrated = match version {
                     1 => serde_json::from_str::<SettingsV1>(&json)?.into_latest(),
-                    _ => serde_json::from_str::<SettingsV2>(&json)?.into_v3(),
+                    2 => serde_json::from_str::<SettingsV2>(&json)?
+                        .into_v3()
+                        .into_v4(),
+                    _ => serde_json::from_str::<SettingsV3>(&json)?.into_v4(),
                 };
                 self.save_settings(&migrated)?;
                 Ok(migrated)
@@ -448,13 +453,19 @@ mod tests {
             .unwrap();
         }
         let migrated = store.load_settings().unwrap();
-        assert_eq!(migrated.schema_version, 3);
+        assert_eq!(
+            migrated.schema_version,
+            crate::settings::SETTINGS_SCHEMA_VERSION
+        );
         assert_eq!(migrated.polling_base_seconds, 9);
         assert!(!migrated.overview_cards[0].visible);
         assert_eq!(
             migrated.history,
             crate::settings::HistoryRetention::default()
         );
+        // v4 defaults: external lookup opt-in stays OFF.
+        assert!(!migrated.external_lookup.enabled);
+        assert_eq!(migrated.rate_unit, crate::settings::RateUnit::Bytes);
         cleanup(&path);
     }
 }

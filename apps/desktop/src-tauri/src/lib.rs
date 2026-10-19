@@ -11,6 +11,7 @@ mod scheduler;
 mod settings;
 mod settings_store;
 mod state;
+pub mod storage;
 
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Arc, Mutex, RwLock};
@@ -190,6 +191,7 @@ pub fn run() {
                 scheduler: scheduler_handle,
                 history_writer: Mutex::new(Some(history_writer)),
                 processes: Mutex::new(processes::ProcessManager::new()),
+                scans: crate::storage::ScanRegistry::new(),
                 history_dir: Mutex::new(Some(history_dir)),
             });
             Ok(())
@@ -213,6 +215,13 @@ pub fn run() {
             commands::request_process_action,
             commands::get_history,
             commands::clear_history,
+            commands::start_scan,
+            commands::cancel_scan,
+            commands::get_scan_status,
+            commands::get_scan_children,
+            commands::move_to_trash,
+            commands::open_in_manager,
+            commands::lookup_external_ip,
         ])
         .build(tauri::generate_context!())
         .expect("error while building APP_NAME")

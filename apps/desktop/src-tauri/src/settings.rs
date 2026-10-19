@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 3;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 4;
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -29,6 +29,36 @@ pub const OVERVIEW_CARD_IDS: &[&str] = &["cpu", "memory", "storage", "network", 
 pub const RAW_HOURS_MAX: u32 = 720;
 pub const ROLLUP_1M_DAYS_MAX: u32 = 730;
 pub const ROLLUP_1H_DAYS_MAX: u32 = 3650;
+
+/// Display preferences (phase 04 §3.11): rates as bytes/s or bits/s.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RateUnit {
+    #[default]
+    Bytes,
+    Bits,
+}
+
+/// External IP lookup: **off by default**; when enabled the app names the
+/// provider and performs an explicit HTTPS lookup (security-privacy.md §7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExternalLookup {
+    pub enabled: bool,
+    /// Fixed, documented provider; no arbitrary user URLs.
+    pub provider: String,
+    pub timeout_secs: u32,
+}
+
+impl Default for ExternalLookup {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: "ipify".to_string(),
+            timeout_secs: 5,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -76,6 +106,8 @@ pub struct Settings {
     pub locale: String,
     pub overview_cards: Vec<OverviewCard>,
     pub history: HistoryRetention,
+    pub rate_unit: RateUnit,
+    pub external_lookup: ExternalLookup,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -99,6 +131,8 @@ impl Default for Settings {
             locale: DEFAULT_LOCALE.to_string(),
             overview_cards: default_overview_cards(),
             history: HistoryRetention::default(),
+            rate_unit: RateUnit::default(),
+            external_lookup: ExternalLookup::default(),
         }
     }
 }
@@ -122,6 +156,8 @@ pub enum SettingsError {
     EmptyOverviewCards,
     #[error("history retention {field}={value} is outside the supported range")]
     HistoryRetentionOutOfBounds { field: &'static str, value: u32 },
+    #[error("external lookup timeout {value}s is outside 1..=30")]
+    ExternalLookupTimeoutOutOfBounds { value: u32 },
 }
 
 impl Settings {
@@ -163,6 +199,17 @@ impl Settings {
             seen.push(card.id.clone());
         }
         self.history.validate()?;
+        if self.external_lookup.timeout_secs == 0 || self.external_lookup.timeout_secs > 30 {
+            return Err(SettingsError::ExternalLookupTimeoutOutOfBounds {
+                value: self.external_lookup.timeout_secs,
+            });
+        }
+        if self.external_lookup.enabled && self.external_lookup.provider != "ipify" {
+            return Err(SettingsError::UnsupportedLocale {
+                locale: format!("provider:{}", self.external_lookup.provider),
+                supported: vec!["ipify".to_string()],
+            });
+        }
         Ok(())
     }
 
@@ -189,6 +236,12 @@ impl Settings {
         }
         if let Some(history) = patch.history {
             self.history = history;
+        }
+        if let Some(rate_unit) = patch.rate_unit {
+            self.rate_unit = rate_unit;
+        }
+        if let Some(external_lookup) = patch.external_lookup {
+            self.external_lookup = external_lookup;
         }
     }
 }
@@ -221,6 +274,54 @@ pub struct SettingsPatch {
     pub locale: Option<String>,
     pub overview_cards: Option<Vec<OverviewCard>>,
     pub history: Option<HistoryRetention>,
+    pub rate_unit: Option<RateUnit>,
+    pub external_lookup: Option<ExternalLookup>,
+}
+
+/// The v3 row shape (adds history retention; predates display prefs).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsV3 {
+    pub schema_version: u32,
+    pub appearance: Appearance,
+    pub compact_mode: bool,
+    pub polling_base_seconds: u32,
+    pub close_to_tray: bool,
+    pub locale: String,
+    pub overview_cards: Vec<OverviewCard>,
+    pub history: HistoryRetention,
+}
+
+impl Default for SettingsV3 {
+    fn default() -> Self {
+        Self {
+            schema_version: 3,
+            appearance: Appearance::System,
+            compact_mode: false,
+            polling_base_seconds: POLLING_DEFAULT_SECS,
+            close_to_tray: false,
+            locale: DEFAULT_LOCALE.to_string(),
+            overview_cards: default_overview_cards(),
+            history: HistoryRetention::default(),
+        }
+    }
+}
+
+impl SettingsV3 {
+    pub fn into_v4(self) -> Settings {
+        Settings {
+            schema_version: SETTINGS_SCHEMA_VERSION,
+            appearance: self.appearance,
+            compact_mode: self.compact_mode,
+            polling_base_seconds: self.polling_base_seconds,
+            close_to_tray: self.close_to_tray,
+            locale: self.locale,
+            overview_cards: self.overview_cards,
+            history: self.history,
+            rate_unit: RateUnit::default(),
+            external_lookup: ExternalLookup::default(),
+        }
+    }
 }
 
 /// The v2 row shape (adds `overview_cards`, predates `history`).
@@ -251,9 +352,9 @@ impl Default for SettingsV2 {
 }
 
 impl SettingsV2 {
-    pub fn into_v3(self) -> Settings {
-        Settings {
-            schema_version: SETTINGS_SCHEMA_VERSION,
+    pub fn into_v3(self) -> SettingsV3 {
+        SettingsV3 {
+            schema_version: 3,
             appearance: self.appearance,
             compact_mode: self.compact_mode,
             polling_base_seconds: self.polling_base_seconds,
@@ -303,6 +404,7 @@ impl SettingsV1 {
             overview_cards: default_overview_cards(),
         }
         .into_v3()
+        .into_v4()
     }
 }
 
@@ -468,9 +570,9 @@ mod tests {
             }],
             ..SettingsV2::default()
         };
-        let migrated = v2.into_v3();
+        let migrated = v2.into_v3().into_v4();
         migrated.validate().expect("migrated settings valid");
-        assert_eq!(migrated.schema_version, 3);
+        assert_eq!(migrated.schema_version, SETTINGS_SCHEMA_VERSION);
         assert_eq!(migrated.appearance, Appearance::Light);
         assert!(!migrated.overview_cards[0].visible);
         assert_eq!(

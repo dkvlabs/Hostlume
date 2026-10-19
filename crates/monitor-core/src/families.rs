@@ -34,6 +34,8 @@ pub const DISK_VOLUME_REMOVABLE: &str = "disk.volume.removable";
 pub const DISK_VOLUME_READ_ONLY: &str = "disk.volume.read_only";
 pub const DISK_DEVICE_READ_BYTES_TOTAL: &str = "disk.device.read_bytes_total";
 pub const DISK_DEVICE_READ_RATE: &str = "disk.device.read_rate";
+pub const DISK_DEVICE_WRITE_BYTES_TOTAL: &str = "disk.device.write_bytes_total";
+pub const DISK_DEVICE_WRITE_RATE: &str = "disk.device.write_rate";
 
 // Network (FX-006).
 pub const NET_INTERFACE_RX_TOTAL: &str = "net.interface.rx_total";
@@ -81,6 +83,8 @@ pub const ALL_FAMILIES: &[&str] = &[
     DISK_VOLUME_READ_ONLY,
     DISK_DEVICE_READ_BYTES_TOTAL,
     DISK_DEVICE_READ_RATE,
+    DISK_DEVICE_WRITE_BYTES_TOTAL,
+    DISK_DEVICE_WRITE_RATE,
     NET_INTERFACE_RX_TOTAL,
     NET_INTERFACE_TX_TOTAL,
     NET_INTERFACE_RX_RATE,

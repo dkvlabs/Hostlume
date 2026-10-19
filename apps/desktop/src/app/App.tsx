@@ -9,7 +9,9 @@ import { Header } from "@/app/Header";
 import { PAGE_IDS, Sidebar, type PageId } from "@/app/Sidebar";
 import { useTelemetry } from "@/app/useTelemetry";
 import { ApplicationsPage } from "@/features/applications/ApplicationsPage";
+import { NetworkPage } from "@/features/network/NetworkPage";
 import { OverviewPage } from "@/features/overview/OverviewPage";
+import { StoragePage } from "@/features/storage/StoragePage";
 import { PlaceholderPage } from "@/features/placeholder/PlaceholderPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { useT } from "@/lib/i18n";
@@ -36,7 +38,9 @@ function renderPage(page: PageId, title: string) {
     case "applications":
       return <ApplicationsPage />;
     case "storage":
+      return <StoragePage />;
     case "network":
+      return <NetworkPage />;
     case "sensors":
     case "compare":
       return <PlaceholderPage title={title} />;

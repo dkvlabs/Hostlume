@@ -4,6 +4,7 @@
 
 use std::sync::atomic::Ordering;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use monitor_core::{CapabilityReport, SystemSnapshot};
@@ -14,6 +15,7 @@ use tauri::State;
 use crate::processes::{ProcessActionRequest, ProcessActionResult, ProcessPage};
 use crate::settings::SettingsPatch;
 use crate::state::AppState;
+use crate::storage::{ChildEntry, ScanChildren, ScanStatus};
 
 #[derive(Debug, Serialize)]
 pub struct CommandError {
@@ -25,6 +27,14 @@ pub struct CommandError {
 }
 
 impl CommandError {
+    fn no_scan() -> Self {
+        Self {
+            code: "SCAN_NOT_FOUND",
+            message_key: "errors.scanNotFound",
+            reason: None,
+        }
+    }
+
     fn no_snapshot_yet() -> Self {
         Self {
             code: "NO_SNAPSHOT_YET",
@@ -244,4 +254,214 @@ pub fn shutdown_history(state: &AppState) {
     if let Some(mut writer) = guard.take() {
         let _ = Arc::get_mut(&mut writer).map(|w| w.shutdown());
     }
+}
+
+// ---- Storage analyzer + safe cleanup (FX-008, phase 04) --------------------
+
+/// Start a scan of a user-chosen root. The root must exist and be a
+/// directory; anything else is a typed rejection.
+#[tauri::command]
+pub fn start_scan(state: State<'_, AppState>, root: String) -> Result<ScanStatus, CommandError> {
+    let path = PathBuf::from(&root);
+    if !path.is_dir() {
+        return Err(CommandError {
+            code: "SCAN_ROOT_INVALID",
+            message_key: "errors.scanRootInvalid",
+            reason: Some(root.clone()),
+        });
+    }
+    let scan_id = uuid::Uuid::new_v4().to_string();
+    let status_root = root.clone();
+    state.scans.start(scan_id.clone(), path);
+    let progress = {
+        let handle = state.scans.get(&scan_id).expect("just registered");
+        let progress = handle.progress.lock().unwrap_or_else(|p| p.into_inner());
+        progress.clone()
+    };
+    Ok(ScanStatus {
+        scan_id,
+        root: status_root,
+        progress,
+    })
+}
+
+#[tauri::command]
+pub fn cancel_scan(state: State<'_, AppState>, scan_id: String) -> bool {
+    state.scans.cancel(&scan_id)
+}
+
+#[tauri::command]
+pub fn get_scan_status(state: State<'_, AppState>, scan_id: String) -> Option<ScanStatus> {
+    let handle = state.scans.get(&scan_id)?;
+    let progress = {
+        let progress = handle.progress.lock().unwrap_or_else(|p| p.into_inner());
+        progress.clone()
+    };
+    let root = handle.root.to_string_lossy().to_string();
+    Some(ScanStatus {
+        scan_id,
+        root,
+        progress,
+    })
+}
+
+/// Paginated children of one node, size-descending — the UI never receives
+/// the whole tree (architecture.md §10).
+#[tauri::command]
+pub fn get_scan_children(
+    state: State<'_, AppState>,
+    scan_id: String,
+    node_index: usize,
+    offset: usize,
+    limit: usize,
+) -> Result<ScanChildren, CommandError> {
+    if limit == 0 || limit > 1_000 {
+        return Err(CommandError {
+            code: "SCAN_PAGE_INVALID",
+            message_key: "errors.scanPageInvalid",
+            reason: Some("limit must be within 1..=1000".into()),
+        });
+    }
+    let handle = state.scans.get(&scan_id).ok_or(CommandError::no_scan())?;
+    let tree = handle.tree.lock().unwrap_or_else(|p| p.into_inner());
+    let Some(node) = tree.nodes.get(node_index) else {
+        return Err(CommandError {
+            code: "SCAN_NODE_INVALID",
+            message_key: "errors.scanNodeInvalid",
+            reason: None,
+        });
+    };
+    let mut order: Vec<usize> = node.children.clone();
+    order.sort_by(|a, b| {
+        tree.nodes[*b]
+            .logical_size
+            .cmp(&tree.nodes[*a].logical_size)
+            .then_with(|| tree.nodes[*a].name.cmp(&tree.nodes[*b].name))
+    });
+    let children = order
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|idx| {
+            let child = &tree.nodes[*idx];
+            ChildEntry {
+                index: *idx,
+                name: child.name.clone(),
+                is_dir: child.is_dir,
+                is_symlink: child.is_symlink,
+                is_mount_boundary: child.is_mount_boundary,
+                logical_size: child.logical_size,
+                allocated_size: child.allocated_size,
+                error_count: child.error_count,
+            }
+        })
+        .collect();
+    Ok(ScanChildren {
+        children,
+        total_children: order.len(),
+        end_of_list: offset + limit >= order.len(),
+        node_index,
+        errors: node.error_count,
+        skipped_count: tree.skipped.len(),
+    })
+}
+
+/// Move explicitly selected items to the OS trash. Scope: paths must live
+/// inside a root scanned this session. Fail-closed, audited.
+#[tauri::command]
+pub fn move_to_trash(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+    confirmation_id: String,
+) -> Result<Vec<TrashPathResult>, CommandError> {
+    if confirmation_id.trim().is_empty() {
+        return Err(CommandError {
+            code: "TRASH_CONFIRMATION_REQUIRED",
+            message_key: "errors.trashConfirmation",
+            reason: None,
+        });
+    }
+    if paths.is_empty() || paths.len() > 100 {
+        return Err(CommandError {
+            code: "TRASH_SELECTION_INVALID",
+            message_key: "errors.trashSelection",
+            reason: Some(format!("{} paths", paths.len())),
+        });
+    }
+    let scan_roots = state.scans.roots();
+    let mut results = Vec::with_capacity(paths.len());
+    for raw in &paths {
+        let path = PathBuf::from(raw);
+        let outcome = match monitor_storage::move_to_trash(&path, &scan_roots) {
+            Ok(()) => "ok".to_string(),
+            Err(err) => {
+                // Detail kept short; full paths stay in the local UI only.
+                state.record_audit(0, 0, "trash", "failed", Some(err.to_string()));
+                err.to_string()
+            }
+        };
+        let ok = outcome == "ok";
+        results.push(TrashPathResult {
+            path: raw.clone(),
+            ok,
+            detail: if ok { None } else { Some(outcome) },
+        });
+    }
+    Ok(results)
+}
+
+/// Open a path in the platform file manager. Named binary + argument
+/// array — no shell interpolation (security-privacy.md §5).
+#[tauri::command]
+pub fn open_in_manager(path: String) -> Result<(), CommandError> {
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err(CommandError {
+            code: "OPEN_PATH_INVALID",
+            message_key: "errors.openPathInvalid",
+            reason: Some(path),
+        });
+    }
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(target_os = "linux")]
+    let program = "xdg-open";
+    #[cfg(windows)]
+    let program = "explorer";
+    std::process::Command::new(program)
+        .arg(&dir)
+        .spawn()
+        .map_err(|err| CommandError::store(err.to_string()))?;
+    Ok(())
+}
+
+/// External IP lookup: **opt-in only**. The default build has no approved
+/// HTTP transport wired; with the setting enabled this still reports a
+/// typed unavailable instead of performing an unreviewed network call.
+#[tauri::command]
+pub fn lookup_external_ip(state: State<'_, AppState>) -> Result<String, CommandError> {
+    let settings = state
+        .store
+        .load_settings()
+        .map_err(|err| CommandError::store(err.to_string()))?;
+    if !settings.external_lookup.enabled {
+        return Err(CommandError {
+            code: "EXTERNAL_LOOKUP_DISABLED",
+            message_key: "errors.externalLookupDisabled",
+            reason: None,
+        });
+    }
+    Err(CommandError {
+        code: "EXTERNAL_LOOKUP_TRANSPORT_UNAVAILABLE",
+        message_key: "errors.externalLookupTransport",
+        reason: Some(settings.external_lookup.provider),
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TrashPathResult {
+    pub path: String,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
