@@ -143,6 +143,10 @@ Live smoke of the built binary over **real loopback HTTP**:
 * Production never fabricates: server serves the shared real snapshot or an
   explicit `no_sample_yet` 503; recording is an annotation window, never a
   data source.
+* Post-commit Mimosa deep scan (commit 975e7a4): **0 findings**, 515 packages,
+  0 matched advisories, sealed `sha256:d868dca6f43728518aabddf346ff108ea98ef4
+  b7fe53e587fa092f5920eae0c7` (`scan-2026-10-19T15-59-03.467Z-692a773b4aa9`).
+  Reported as a scan result, not a safety claim.
 
 ## 7. Blockers
 
