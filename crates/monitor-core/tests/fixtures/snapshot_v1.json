@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "host_id": "0f0e3a2c-1111-4222-8333-444455556666",
+  "generation": "gen-fixture-1",
+  "sequence": 42,
+  "collected_at_utc": "2026-10-19T00:00:00.000Z",
+  "metrics": [
+    {
+      "metric_id": "cpu.total.usage",
+      "entity_id": "host",
+      "value": 12.5,
+      "unit": "percent",
+      "availability": "available",
+      "source": "fixture",
+      "collected_at_utc": "2026-10-19T00:00:00.000Z",
+      "monotonic_sequence": 42
+    },
+    {
+      "metric_id": "sensor.temperature",
+      "entity_id": "sensor:cpu-package",
+      "value": null,
+      "unit": "celsius",
+      "availability": "unsupported",
+      "source": "fixture",
+      "collected_at_utc": "2026-10-19T00:00:00.000Z",
+      "monotonic_sequence": 42,
+      "reason_code": "NO_PUBLIC_READABLE_SENSOR",
+      "human_message_key": "states.unsupported"
+    },
+    {
+      "metric_id": "net.interface.rx_rate",
+      "entity_id": "if:en0:gen1",
+      "value": null,
+      "unit": "bytes_per_second",
+      "availability": "temporarily_unavailable",
+      "source": "fixture",
+      "collected_at_utc": "2026-10-19T00:00:00.000Z",
+      "monotonic_sequence": 42,
+      "reason_code": "WARMUP",
+      "human_message_key": "states.collecting",
+      "precision": 0
+    }
+  ],
+  "capabilities_revision": 3
+}

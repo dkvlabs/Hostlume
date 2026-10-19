@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/*
+ * Semantic design tokens from docs/design.md §2. Dark is the canonical
+ * set; light overrides via [data-theme="light"]. Components consume the
+ * Tailwind utilities generated from these variables (bg-surface, text-muted,
+ * border-stroke, ...) — never raw hex values.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-stroke: var(--stroke);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-warning: var(--warning);
+  --color-critical: var(--critical);
+  --radius-card: 12px;
+  --radius-control: 8px;
+}
+
+:root {
+  /* dark (canonical) */
+  --bg: #101318;
+  --sidebar: #151a21;
+  --surface: #1a2028;
+  --surface-raised: #222a34;
+  --stroke: #313b47;
+  --text: #f2f5f8;
+  --muted: #a6b0bd;
+  --accent: #67d4d0;
+  --warning: #f4bc6c;
+  --critical: #fb7c80;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f7fa;
+  --sidebar: #ffffff;
+  --surface: #ffffff;
+  --surface-raised: #f0f3f7;
+  --stroke: #d9e0e7;
+  --text: #17212c;
+  --muted: #536171;
+  --accent: #167d84;
+  --warning: #9f5800;
+  --critical: #b72f3d;
+  color-scheme: light;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-text;
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans",
+      sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  /* Measurements use monospace tabular numerals (design.md §2). */
+  .numeric {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Visible focus everywhere (accessibility target WCAG 2.2 AA). */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

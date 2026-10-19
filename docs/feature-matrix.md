@@ -23,7 +23,7 @@
 | FX-017 | Notifications and local opt-in actions | Yes | P1 | 07 | planned | Hysteresis, cooldown, safe trigger tests |
 | FX-018 | Comparison, recording, CSV export | Yes | P1 | 08 | planned | Series alignment; CSV import/export |
 | FX-019 | Mobile web monitor / read-only REST API | Yes | P1 | 08 | planned | Auth/TLS/loopback tests, no write routes |
-| FX-020 | Preferences, themes, retention, i18n | Yes (subset) | P0 | 01/09 | planned | Persistent schema migrations, UI states |
+| FX-020 | Preferences, themes, retention, i18n | Yes (subset) | P0 | 01/09 | in_progress | Persistent schema migrations, UI states |
 | FX-021 | User-facing capability diagnostics | Enhancement | P1 | 05 | planned | Per-metric OS driver status + remediation |
 | FX-022 | Multi-computer monitoring | Enhancement | P3 | 10 (optional) | planned | Multi-agent secure pairing specification |
 

@@ -1,0 +1,23 @@
+# cargo-deny policy: dependency license gate (phase 01 §2 task 9).
+# The project's own crates are GPL-3.0-only (see root LICENSE); every
+# third-party dependency must carry one of the permissive licenses below.
+# New dependencies need an entry in docs/evidence/DEPENDENCY_LICENSE_SCAN.md.
+
+[licenses]
+version = 2
+allow = [
+  "GPL-3.0-only",       # this project's own workspace crates
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  "MPL-2.0",
+  "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "warn"

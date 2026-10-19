@@ -3,3 +3,15 @@
 .mimosa
 .v2c
 .video_agent
+
+# Rust
+/target
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+*.local
+
+# Tauri generated ACL manifests
+apps/desktop/src-tauri/gen/schemas/
