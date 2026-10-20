@@ -181,3 +181,10 @@ Risks/security: no remote action routes; pairing bound to certificate fingerprin
 Feature matrix updated: yes (FX-022 implemented; phase-10 evidence records)
 Next phase: none defined — remaining: rc1→release checklist + two-device LAN validation
 ```
+
+## 11. Post-commit security scan record
+
+Mimosa deep scan on commit `1a29ebf` (reported as a scan result, not a safety claim): seal
+`sha256:7f1c4117474fb4501372ef0a8e9e491c500cd446009db6df3ecfb6cf3d2d827b`, **0 findings**, 518 packages
+scanned, offline advisory 0 matched / 0 unknown. Evidence boundary static-only; the pre-commit hook
+noted library-source-unavailable and partial call-graph coverage, same as previous phases.
