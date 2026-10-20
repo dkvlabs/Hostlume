@@ -68,7 +68,7 @@ Bundle metadata: `CFBundleIdentifier com.dkvlabs.hostlume`, `CFBundleName Hostlu
 
 ### Named: Hostlume (20.10.2026)
 
-The product name is **Hostlume** (identifier `com.dkvlabs.hostlume`). The bundle, window title, tray, notifications, agent certificate and default host display name all use it; builds from before this date shipped as the `APP_NAME` placeholder (their data directories migrate automatically on first start — see Upgrade below).
+The product name is **Hostlume** (identifier `com.dkvlabs.hostlume`). Post-commit Mimosa deep scan on `fddf91e` (scan result, not a safety claim): seal `sha256:9c2731b9d1543e55efc849be712bdc9d173319e8b1d1db5bd32ba37851a029ae`, 0 findings, 518 packages, 0 advisories (static-only evidence). The bundle, window title, tray, notifications, agent certificate and default host display name all use it; builds from before this date shipped as the `APP_NAME` placeholder (their data directories migrate automatically on first start — see Upgrade below).
 
 ### Phase 10 additions (20.10.2026, unreleased) — multi-host preview (FX-022)
 
