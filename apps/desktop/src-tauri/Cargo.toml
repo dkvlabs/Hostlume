@@ -1,6 +1,6 @@
 [package]
 name = "app"
-description = "APP_NAME desktop shell (Tauri 2)"
+description = "Hostlume desktop shell (Tauri 2)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

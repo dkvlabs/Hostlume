@@ -5,7 +5,7 @@
  */
 
 export const en = {
-  "app.name": "APP_NAME",
+  "app.name": "Hostlume",
   "nav.overview": "Overview",
   "nav.applications": "Applications",
   "nav.storage": "Storage",
@@ -261,7 +261,7 @@ export const en = {
   "settings.temperatureUnit.fahrenheit": "Fahrenheit (°F)",
 
   "settings.launchAtLogin": "Launch at login",
-  "settings.launchAtLoginHint": "Registers the OS login item for APP_NAME.",
+  "settings.launchAtLoginHint": "Registers the OS login item for Hostlume.",
   "alerts.rules": "Alert rules",
   "alerts.noRules": "No rules yet. Add one to get notified when a metric crosses a threshold.",
   "alerts.addRule": "Add rule",
@@ -300,7 +300,7 @@ export const en = {
   "alerts.testSent": "Sent",
   "alerts.testFailed": "Failed",
   "alerts.notificationStateMacos":
-    "macOS manages notification permission itself: the first notification triggers the system prompt. If nothing appears, allow notifications for APP_NAME in System Settings → Notifications.",
+    "macOS manages notification permission itself: the first notification triggers the system prompt. If nothing appears, allow notifications for Hostlume in System Settings → Notifications.",
   "alerts.notificationStateWindows":
     "Windows shows toasts per app; Focus assist may silence them. The test button reports whether the notification was posted.",
   "alerts.notificationStateLinux":
@@ -484,7 +484,7 @@ export type MessageKey = keyof typeof en;
 export type Dictionary = Record<MessageKey, string>;
 
 export const ro: Dictionary = {
-  "app.name": "APP_NAME",
+  "app.name": "Hostlume",
   "nav.overview": "Prezentare generală",
   "nav.applications": "Aplicații",
   "nav.storage": "Stocare",
@@ -737,7 +737,7 @@ export const ro: Dictionary = {
   "settings.temperatureUnit.fahrenheit": "Fahrenheit (°F)",
 
   "settings.launchAtLogin": "Lansare la autentificare",
-  "settings.launchAtLoginHint": "Înregistrează elementul de login al sistemului pentru APP_NAME.",
+  "settings.launchAtLoginHint": "Înregistrează elementul de login al sistemului pentru Hostlume.",
   "alerts.rules": "Reguli de alertă",
   "alerts.noRules": "Nicio regulă încă. Adaugă una pentru a fi notificat când o metrică depășește un prag.",
   "alerts.addRule": "Adaugă regulă",
@@ -776,7 +776,7 @@ export const ro: Dictionary = {
   "alerts.testSent": "Trimisă",
   "alerts.testFailed": "Eșuat",
   "alerts.notificationStateMacos":
-    "macOS gestionează singur permisiunea de notificare: prima notificare declanșează dialogul de sistem. Dacă nu apare nimic, permite notificările pentru APP_NAME în Setări de sistem → Notificări.",
+    "macOS gestionează singur permisiunea de notificare: prima notificare declanșează dialogul de sistem. Dacă nu apare nimic, permite notificările pentru Hostlume în Setări de sistem → Notificări.",
   "alerts.notificationStateWindows":
     "Windows afișează toast-uri per aplicație; Focus assist le poate reduce. Butonul de test raportează dacă notificarea a fost postată.",
   "alerts.notificationStateLinux":

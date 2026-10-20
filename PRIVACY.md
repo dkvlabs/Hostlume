@@ -1,6 +1,6 @@
-# Privacy — what APP_NAME collects, keeps and never sends
+# Privacy — what Hostlume collects, keeps and never sends
 
-*Applies to version 0.1.0 (release candidate). `APP_NAME` is a placeholder until the product name is final. This document describes the shipped behavior; where a feature is optional it is **off by default** and says so.*
+*Applies to version 0.1.0 (release candidate, named **Hostlume** on 20.10.2026 — earlier placeholder builds migrate their data directory into the named one on first start). This document describes the shipped behavior; where a feature is optional it is **off by default** and says so.*
 
 ## The short version
 
@@ -24,9 +24,9 @@ All data lives in the app's own data directory and nowhere else:
 
 | OS | Location |
 |---|---|
-| macOS | `~/Library/Application Support/com.dkvlabs.appname/` |
-| Windows | `%APPDATA%\com.dkvlabs.appname\` |
-| Linux | `~/.local/share/com.dkvlabs.appname/` |
+| macOS | `~/Library/Application Support/com.dkvlabs.hostlume/` |
+| Windows | `%APPDATA%\com.dkvlabs.hostlume\` |
+| Linux | `~/.local/share/com.dkvlabs.hostlume/` |
 
 Inside it:
 

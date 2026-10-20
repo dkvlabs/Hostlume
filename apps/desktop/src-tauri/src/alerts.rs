@@ -224,7 +224,7 @@ fn send_alert_notification(
         .config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "APP_NAME".to_string());
+        .unwrap_or_else(|| "Hostlume".to_string());
     let body = render_notification_message(
         &rule_for_notification(transition),
         &transition.entity_id,
@@ -356,7 +356,7 @@ pub fn send_test_notification(app: AppHandle) -> Result<(), CommandError> {
         .config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "APP_NAME".to_string());
+        .unwrap_or_else(|| "Hostlume".to_string());
     app.notification()
         .builder()
         .title(title)

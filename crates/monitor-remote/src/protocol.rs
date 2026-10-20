@@ -14,7 +14,7 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Paired consoles per agent — a few user-owned machines, not a fleet.
 pub const MAX_DEVICES: usize = 16;
-pub const DEFAULT_DISPLAY_NAME: &str = "APP_NAME host";
+pub const DEFAULT_DISPLAY_NAME: &str = "Hostlume host";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {

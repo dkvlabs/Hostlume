@@ -1,6 +1,6 @@
 [package]
 name = "monitor-platform-windows"
-description = "Windows-specific collectors for APP_NAME (Phase 01 seam: explicit unsupported)"
+description = "Windows-specific collectors for Hostlume (Phase 01 seam: explicit unsupported)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

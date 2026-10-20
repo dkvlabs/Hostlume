@@ -2,7 +2,7 @@
 
 ## Product statement
 
-`APP_NAME` is an offline-first desktop system monitor for macOS, Windows and Linux. It provides live metrics, history, process visibility, safe disk cleanup, conditional hardware sensors, configurable tray indicators, alerts and secure optional remote viewing. Target users are developers, power users and administrators monitoring their **own** machines.
+**Hostlume** is an offline-first desktop system monitor for macOS, Windows and Linux. It provides live metrics, history, process visibility, safe disk cleanup, conditional hardware sensors, configurable tray indicators, alerts and secure optional remote viewing. Target users are developers, power users and administrators monitoring their **own** machines.
 
 ## Personas and workflows
 

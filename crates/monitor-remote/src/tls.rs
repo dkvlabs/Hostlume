@@ -71,7 +71,7 @@ impl TlsIdentity {
         let mut params = rcgen::CertificateParams::new(vec![SAN_NAME.to_string()])
             .map_err(|e| TlsError::Generate(e.to_string()))?;
         let mut dn = rcgen::DistinguishedName::new();
-        dn.push(rcgen::DnType::CommonName, "APP_NAME agent");
+        dn.push(rcgen::DnType::CommonName, "Hostlume agent");
         params.distinguished_name = dn;
         let cert = params
             .self_signed(&key_pair)

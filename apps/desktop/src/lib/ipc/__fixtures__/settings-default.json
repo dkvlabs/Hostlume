@@ -62,7 +62,7 @@
     "port": 45454
   },
   "remote_devices": [],
-  "remote_display_name": "APP_NAME host",
+  "remote_display_name": "Hostlume host",
   "remote_hosts": [],
   "remote_poll_seconds": 5,
   "remote_token_hash": null,

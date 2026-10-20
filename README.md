@@ -2,7 +2,7 @@
 
 **Purpose:** Build an original, production-grade desktop monitoring application with functionality comparable to [iStatistica Pro](https://www.imagetasks.com/istatistica/pro/) for **macOS, Windows, and Linux**.
 
-**Deliverable:** This ZIP is a **documentation and execution package**, not prebuilt application code. The recommended stack is **Tauri 2 + Rust + React/TypeScript + Vite + Tailwind CSS + shadcn/ui + SQLite**. `APP_NAME` is a temporary brand placeholder.
+**Deliverable:** This repository is the **documentation and execution package** for **Hostlume**, an original cross-platform system monitor. The recommended stack is **Tauri 2 + Rust + React/TypeScript + Vite + Tailwind CSS + shadcn/ui + SQLite**. (Named 20.10.2026; earlier builds used the `APP_NAME` placeholder and the app migrates their data directory on first start.)
 
 ## Start here
 

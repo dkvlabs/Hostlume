@@ -1,6 +1,6 @@
 [package]
 name = "monitor-core"
-description = "Telemetry contract types, clocks and collector interfaces for APP_NAME"
+description = "Telemetry contract types, clocks and collector interfaces for Hostlume"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

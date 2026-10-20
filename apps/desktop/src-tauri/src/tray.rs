@@ -211,12 +211,12 @@ impl TrayController {
             true,
             None::<&str>,
         )?;
-        let open_item = MenuItem::with_id(&app, MENU_OPEN, "Open APP_NAME", true, None::<&str>)?;
+        let open_item = MenuItem::with_id(&app, MENU_OPEN, "Open Hostlume", true, None::<&str>)?;
         let compact_item =
             MenuItem::with_id(&app, MENU_COMPACT, "Compact monitor", true, None::<&str>)?;
         let settings_item =
             MenuItem::with_id(&app, MENU_SETTINGS, "Settings…", true, None::<&str>)?;
-        let quit_item = MenuItem::with_id(&app, MENU_QUIT, "Quit APP_NAME", true, None::<&str>)?;
+        let quit_item = MenuItem::with_id(&app, MENU_QUIT, "Quit Hostlume", true, None::<&str>)?;
         let separator = PredefinedMenuItem::separator(&app)?;
         let separator2 = PredefinedMenuItem::separator(&app)?;
         let menu = Menu::with_items(
@@ -242,7 +242,7 @@ impl TrayController {
             // Left click opens the menu on all platforms (predictable
             // left/right semantics; the phase doc asks for explicitness).
             .show_menu_on_left_click(true)
-            .tooltip("APP_NAME")
+            .tooltip("Hostlume")
             .on_menu_event(move |app, event| {
                 handle_menu(app, event.id().as_ref(), &paused_for_menu);
             })
@@ -347,7 +347,7 @@ pub fn toggle_compact_window(app: &AppHandle<Wry>) {
         "compact",
         tauri::WebviewUrl::App("index.html".into()),
     )
-    .title("APP_NAME")
+    .title("Hostlume")
     .inner_size(300.0, 190.0)
     .resizable(false)
     .decorations(false)

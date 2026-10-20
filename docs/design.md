@@ -39,7 +39,7 @@ Chart series suggestions: CPU teal, memory violet, GPU blue, network down cyan/u
 
 ```text
 ┌──────────────────┬──────────────────────────────────────────────────┐
-│ APP_NAME         │ Machine / OS  • last update • status • actions   │
+│ Hostlume         │ Machine / OS  • last update • status • actions   │
 │                  ├──────────────────────────────────────────────────┤
 │ ▣ Overview       │ PAGE TITLE      [time range] [filter] [export]   │
 │ ◷ Applications   │                                                  │

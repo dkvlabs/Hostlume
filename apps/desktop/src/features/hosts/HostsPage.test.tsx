@@ -58,7 +58,7 @@ function hostFixture(overrides: Partial<HostLiveState> = {}): HostLiveState {
     clock_skew_ms: 250,
     no_sample_yet: false,
     agent_version: "0.1.0",
-    agent_display_name: "APP_NAME host",
+    agent_display_name: "Hostlume host",
     families: ["cpu", "memory"],
     headline: [["cpu.total.usage", [{ ts_utc_ms: 1_792_368_000_000, value: 31.5 }]]],
     readings: [

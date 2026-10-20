@@ -1,4 +1,4 @@
-//! APP_NAME desktop shell — Tauri 2 entry point.
+//! Hostlume desktop shell — Tauri 2 entry point.
 //!
 //! Security posture (security-privacy.md): strict CSP, `core:default`
 //! capability only, no shell/filesystem plugins, all command inputs
@@ -154,6 +154,48 @@ fn install_crash_logger(dir: &std::path::Path) {
     }));
 }
 
+/// The app-data directory name used before the product was named (the
+/// placeholder identifier). Read by the one-time migration only.
+const LEGACY_IDENTIFIER: &str = "com.dkvlabs.appname";
+
+/// Naming migration (APP_NAME → Hostlume, 20.10.2026): the identifier
+/// change moves the app-data directory, so move the previous directory's
+/// contents into the current one. Never overwrites: it runs only while the
+/// current directory has no `settings.sqlite3` yet, children are moved
+/// individually (same volume), colliding names are skipped, and the legacy
+/// directory is removed only once completely drained. Returns whether
+/// anything was migrated.
+fn migrate_legacy_data_dir(new_data_dir: &std::path::Path) -> std::io::Result<bool> {
+    let Some(current) = new_data_dir.file_name().and_then(|name| name.to_str()) else {
+        return Ok(false);
+    };
+    if current == LEGACY_IDENTIFIER {
+        return Ok(false);
+    }
+    let Some(base) = new_data_dir.parent() else {
+        return Ok(false);
+    };
+    let legacy = base.join(LEGACY_IDENTIFIER);
+    if !legacy.is_dir() || new_data_dir.join("settings.sqlite3").exists() {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(new_data_dir)?;
+    let mut moved = 0usize;
+    for entry in std::fs::read_dir(&legacy)? {
+        let entry = entry?;
+        let target = new_data_dir.join(entry.file_name());
+        if target.exists() {
+            continue; // never overwrite anything that is already there
+        }
+        std::fs::rename(entry.path(), &target)?;
+        moved += 1;
+    }
+    // Leftovers (colliding names) keep the legacy directory alive for
+    // manual inspection; only a fully drained directory is removed.
+    let _ = std::fs::remove_dir(&legacy);
+    Ok(moved > 0)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
@@ -170,6 +212,15 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = handle.path().app_data_dir()?;
+            // Product naming (APP_NAME → Hostlume) changed the identifier and
+            // therefore the app-data directory; move the previous directory's
+            // contents across once so settings, history, exports and
+            // credentials survive. Never overwrites anything.
+            match migrate_legacy_data_dir(&data_dir) {
+                Ok(true) => eprintln!("migrated legacy app data directory to {data_dir:?}"),
+                Ok(false) => {}
+                Err(error) => eprintln!("legacy data migration skipped: {error}"),
+            }
             // Crash handling first: every later subsystem can panic.
             install_crash_logger(&data_dir);
             let db_path = data_dir.join("settings.sqlite3");
@@ -422,7 +473,7 @@ pub fn run() {
             recordings::export_recording_csv,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building APP_NAME")
+        .expect("error while building Hostlume")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app_handle.try_state::<AppState>() {
@@ -499,5 +550,66 @@ mod tests {
         let contents = std::fs::read_to_string(&path).expect("crash log readable");
         assert_eq!(contents, "first\nsecond\n");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn legacy_fixture() -> std::path::PathBuf {
+        let base = std::env::temp_dir().join(format!("hostlume-naming-{}", uuid::Uuid::new_v4()));
+        let legacy = base.join(LEGACY_IDENTIFIER);
+        std::fs::create_dir_all(legacy.join("history")).expect("legacy dirs");
+        std::fs::write(legacy.join("settings.sqlite3"), b"sqlite-bytes").expect("legacy settings");
+        std::fs::write(legacy.join("history").join("history.sqlite3"), b"h")
+            .expect("legacy history");
+        std::fs::write(legacy.join("remote-credentials.json"), b"{}").expect("legacy credentials");
+        base
+    }
+
+    /// The naming migration moves every child of the legacy placeholder
+    /// directory into the named directory and removes the empty legacy dir.
+    #[test]
+    fn naming_migration_moves_the_whole_data_directory_once() {
+        let base = legacy_fixture();
+        let new_dir = base.join("com.dkvlabs.hostlume");
+        assert!(migrate_legacy_data_dir(&new_dir).expect("migrate"));
+        assert_eq!(
+            std::fs::read(new_dir.join("settings.sqlite3")).expect("settings moved"),
+            b"sqlite-bytes"
+        );
+        assert!(new_dir.join("history").join("history.sqlite3").is_file());
+        assert!(new_dir.join("remote-credentials.json").is_file());
+        assert!(!base.join(LEGACY_IDENTIFIER).exists(), "legacy dir drained");
+        // A second run is a no-op (the app may start many times).
+        assert!(!migrate_legacy_data_dir(&new_dir).expect("second run"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Never overwrites: a real existing installation in the named
+    /// directory wins, and the legacy directory stays untouched.
+    #[test]
+    fn naming_migration_never_overwrites_an_existing_installation() {
+        let base = legacy_fixture();
+        let new_dir = base.join("com.dkvlabs.hostlume");
+        std::fs::create_dir_all(&new_dir).expect("new dir");
+        std::fs::write(new_dir.join("settings.sqlite3"), b"existing").expect("existing install");
+        assert!(!migrate_legacy_data_dir(&new_dir).expect("refuse"));
+        assert_eq!(
+            std::fs::read(new_dir.join("settings.sqlite3")).expect("untouched"),
+            b"existing"
+        );
+        assert!(base
+            .join(LEGACY_IDENTIFIER)
+            .join("settings.sqlite3")
+            .is_file());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The migration is a no-op when there is no legacy directory at all
+    /// (fresh installs of the named build).
+    #[test]
+    fn naming_migration_is_absent_on_fresh_installs() {
+        let base = std::env::temp_dir().join(format!("hostlume-naming-{}", uuid::Uuid::new_v4()));
+        let new_dir = base.join("com.dkvlabs.hostlume");
+        assert!(!migrate_legacy_data_dir(&new_dir).expect("no legacy"));
+        assert!(!new_dir.exists(), "nothing created when nothing to migrate");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
