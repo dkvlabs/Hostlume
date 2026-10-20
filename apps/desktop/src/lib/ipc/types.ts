@@ -15,7 +15,7 @@ export const SCHEMA_VERSION = 1;
  * version (phase 09 release smoke found that mismatch rejecting every real
  * settings payload). Pinned by `settings-default.json` contract tests.
  */
-export const SETTINGS_SCHEMA_VERSION = 8;
+export const SETTINGS_SCHEMA_VERSION = 9;
 
 export type Availability =
   | "available"
@@ -159,6 +159,12 @@ export interface Settings {
   alerts: AlertsConfig;
   remote: RemoteConfig;
   remote_token_hash: string | null;
+  /** Phase 10 (FX-022). Device/host records are read-only here; the
+   * pairing, revoke and remove commands own them. */
+  remote_display_name: string;
+  remote_devices: PairedDeviceRecord[];
+  remote_hosts: PairedHostConfig[];
+  remote_poll_seconds: number;
 }
 
 /** Alert delivery settings (phase 07); actions default OFF. */
@@ -186,6 +192,9 @@ export interface SettingsPatch {
   alerts?: AlertsConfig;
   /** Remote configuration changes go through the dedicated
    * `configure_remote` command (token-aware), not this patch. */
+  /** Phase 10: the only multi-host preferences the WebView may patch. */
+  remote_display_name?: string;
+  remote_poll_seconds?: number;
 }
 
 /** Per-collector health from `get_diagnostics` (no host identifiers). */
@@ -441,10 +450,117 @@ export interface RemoteStatus {
   port: number;
   url?: string;
   token_exists: boolean;
+  /** Phase 10: the name paired consoles see for this machine. */
+  display_name: string;
+  /** LAN (TLS) only: SHA-256 of this machine's certificate, hex. */
+  tls_fingerprint: string | null;
+  /** Open pairing window — code is shown on this machine only. */
+  pairing: PairingWindowInfo | null;
+  devices: RemoteDeviceView[];
+}
+
+export interface PairingWindowInfo {
+  code: string;
+  secs_remaining: number;
+}
+
+export interface RemoteDeviceView {
+  device_id: string;
+  label: string;
+  created_at_utc: string;
+  protocol_version: number;
+  last_seen_secs: number | null;
 }
 
 export interface RemoteSetup {
   status: RemoteStatus;
   /** The full token, returned ONLY when a new one was generated. */
   token_once?: string;
+}
+
+// ---- Paired hosts (FX-022, phase 10) ----------------------------------------
+
+/** Agent-side device record kept in settings (hash only, never the token). */
+export interface PairedDeviceRecord {
+  device_id: string;
+  label: string;
+  token_hash: string;
+  created_at_utc: string;
+  protocol_version: number;
+}
+
+/** Console-side host record kept in settings — carries no secret. */
+export interface PairedHostConfig {
+  host_id: string;
+  label: string;
+  endpoint: string;
+  fingerprint_sha256: string;
+  device_id: string;
+  protocol_version: number;
+  added_at_utc: string;
+  record_history: boolean;
+}
+
+export const HOST_STATUSES = [
+  "never_connected",
+  "online",
+  "stale",
+  "offline",
+  "unauthorized",
+  "cert_mismatch",
+  "incompatible",
+] as const;
+export type HostStatus = (typeof HOST_STATUSES)[number];
+
+export interface HeadlineSample {
+  /** Local (console) receipt time, epoch ms. */
+  ts_utc_ms: number;
+  value: number;
+}
+
+/** A numeric reading as reported by the agent (owned, unit as string). */
+export interface RemoteReadingView {
+  metric_id: string;
+  entity_id: string;
+  value: number;
+  unit: string;
+  collected_at_utc: string;
+  sequence: number;
+}
+
+/** Mirrors the Rust `HostLiveState`. Every value is host-tagged; local and
+ * remote timestamps are both carried so the UI can show the agent's clock
+ * without ever using it to decide liveness. */
+export interface HostLiveState {
+  host_id: string;
+  label: string;
+  endpoint: string;
+  fingerprint_sha256: string;
+  device_id: string;
+  protocol_version: number;
+  record_history: boolean;
+  status: HostStatus;
+  last_success_ms: number | null;
+  age_ms: number | null;
+  last_error_code: string | null;
+  last_error: string | null;
+  remote_collected_at_utc: string | null;
+  remote_sequence: number | null;
+  clock_skew_ms: number | null;
+  no_sample_yet: boolean;
+  agent_version: string | null;
+  agent_display_name: string | null;
+  families: string[];
+  headline: [string, HeadlineSample[]][];
+  readings: RemoteReadingView[];
+}
+
+export interface RemoveHostResult {
+  host_id: string;
+  history_purged: boolean;
+  history_deleted: {
+    raw_deleted: number;
+    rollup_1m_deleted: number;
+    rollup_1h_deleted: number;
+  } | null;
 }

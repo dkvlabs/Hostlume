@@ -34,6 +34,7 @@ fn data() -> RemoteData {
             dir
         },
         process_rows: None,
+        on_device_paired: None,
     }
 }
 

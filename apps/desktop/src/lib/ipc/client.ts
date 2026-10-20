@@ -14,11 +14,15 @@ import {
   isGpuInfoReport,
   isDiagnosticsReport,
   isHistoryResponse,
+  isHostLiveState,
+  isHostLiveStateList,
   isNotificationStateInfo,
+  isPairingWindowInfo,
   isProcessActionResult,
   isProcessPage,
   isRemoteSetup,
   isRemoteStatus,
+  isRemoveHostResult,
   isRuleProbe,
   isSettings,
   isSystemSnapshot,
@@ -29,11 +33,14 @@ import type {
   AlertRule,
   CsvExportResult,
   CsvExportSpec,
+  HostLiveState,
+  PairingWindowInfo,
   RecordingSession,
   RecordingStart,
   RemoteMode,
   RemoteSetup,
   RemoteStatus,
+  RemoveHostResult,
   CapabilityReport,
   GpuInfoReport,
   CommandErrorPayload,
@@ -391,7 +398,104 @@ export const ipc = {
       throw toIpcError(err);
     }
   },
+
+  // ---- phase 10: agent-side pairing + console-side hosts ----------------------
+
+  async openPairingWindow(): Promise<PairingWindowInfo> {
+    try {
+      return await invokeValidated("remote_open_pairing_window", undefined, isPairingWindowInfo);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async closePairingWindow(): Promise<RemoteStatus> {
+    try {
+      return await invokeValidated("remote_close_pairing_window", undefined, isRemoteStatus);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async revokeRemoteDevice(deviceId: string): Promise<RemoteStatus> {
+    try {
+      return await invokeValidated(
+        "remote_revoke_device",
+        { deviceId },
+        isRemoteStatus
+      );
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async getHostsState(): Promise<HostLiveState[]> {
+    try {
+      return await invokeValidated("get_hosts_state", undefined, isHostLiveStateList);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  /** The pairing code never leaves this call; the token never reaches the
+   * WebView at all (it is stored by Rust in the restricted credential file). */
+  async pairHost(endpoint: string, code: string, label: string): Promise<HostLiveState> {
+    try {
+      return await invokeValidated("pair_host", { endpoint, code, label }, isHostLiveState);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async removeHost(hostId: string, purgeHistory: boolean): Promise<RemoveHostResult> {
+    try {
+      return await invokeValidated(
+        "remove_host",
+        { hostId, purgeHistory },
+        isRemoveHostResult
+      );
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async renameHost(hostId: string, label: string): Promise<HostLiveState> {
+    try {
+      return await invokeValidated("rename_host", { hostId, label }, isHostLiveState);
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
+
+  async setHostRecording(hostId: string, enabled: boolean): Promise<HostLiveState> {
+    try {
+      return await invokeValidated(
+        "set_host_recording",
+        { hostId, enabled },
+        isHostLiveState
+      );
+    } catch (err) {
+      throw toIpcError(err);
+    }
+  },
 };
+
+/** Subscribe to paired-host poll updates (payload: `{ host_id }`). */
+export async function onHostsUpdated(
+  callback: (hostId: string) => void
+): Promise<() => void> {
+  const unlisten = await listen<unknown>("hosts-updated", (event) => {
+    const payload = event.payload;
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      typeof (payload as { host_id?: unknown }).host_id === "string"
+    ) {
+      callback((payload as { host_id: string }).host_id);
+    }
+  });
+  return unlisten;
+}
 
 function scanStatusFrom(raw: unknown): ScanStatus {
   if (

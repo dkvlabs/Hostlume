@@ -14,6 +14,7 @@ import { OverviewPage } from "@/features/overview/OverviewPage";
 import { StoragePage } from "@/features/storage/StoragePage";
 import { SensorsPage } from "@/features/sensors/SensorsPage";
 import { ComparePage } from "@/features/compare/ComparePage";
+import { HostsPage } from "@/features/hosts/HostsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { useT } from "@/lib/i18n";
 import { applyAppearance, resolveTheme, watchSystemTheme } from "@/lib/theme";
@@ -35,6 +36,8 @@ function renderPage(page: PageId) {
       return <SensorsPage />;
     case "compare":
       return <ComparePage />;
+    case "hosts":
+      return <HostsPage />;
   }
 }
 

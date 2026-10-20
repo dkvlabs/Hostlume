@@ -1,6 +1,6 @@
 /**
  * Primary navigation (design.md §3). Buttons are naturally keyboard
- * focusable; global shortcuts map Ctrl/Cmd+1..7 to pages and Ctrl/Cmd+, to
+ * focusable; global shortcuts map Ctrl/Cmd+1..N to pages and Ctrl/Cmd+, to
  * Settings. Entries carry no fabricated status dots — status comes from
  * real telemetry only.
  */
@@ -10,6 +10,7 @@ import {
   Circle,
   HardDrive,
   ListTree,
+  MonitorSmartphone,
   Settings as SettingsIcon,
   Wifi,
 } from "lucide-react";
@@ -25,6 +26,7 @@ export const PAGE_IDS = [
   "network",
   "sensors",
   "compare",
+  "hosts",
   "settings",
 ] as const;
 
@@ -37,6 +39,7 @@ const NAV_ITEMS: { id: PageId; labelKey: MessageKey; icon: LucideIcon }[] = [
   { id: "network", labelKey: "nav.network", icon: Wifi },
   { id: "sensors", labelKey: "nav.sensors", icon: Circle },
   { id: "compare", labelKey: "nav.compare", icon: ArrowLeftRight },
+  { id: "hosts", labelKey: "nav.hosts", icon: MonitorSmartphone },
   { id: "settings", labelKey: "nav.settings", icon: SettingsIcon },
 ];
 

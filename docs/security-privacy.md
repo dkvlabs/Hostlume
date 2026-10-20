@@ -47,6 +47,8 @@ Mode 1 **OFF** (default): no socket open.
 Mode 2 **Loopback**: `127.0.0.1`/`::1`, token auth strongly preferred, may support local browser.  
 Mode 3 **LAN**: explicit opt-in, selected bind address, **TLS + strong token authentication**, clear firewall guidance, network risk warning, device-scoped secrets and revocation.
 
+> **Phase 10 status:** LAN mode is implemented over pinned TLS (self-signed agent certificate, fingerprint pinned by consoles at pairing, ADR-0009). Pairing uses single-use short-lived codes bound to the certificate fingerprint; paired consoles hold per-device revocable tokens (hash-only on the agent). TLS cert trust/onboarding is the explicit fingerprint display at pairing — no untrusted cert is silently distributed. No discovery, no relay, no WAN forwarding; a real second-device LAN validation is still pending (docs/progress/PHASE-10.md §9).
+
 Implementation:
 
 - Hardcoded read-only route registry: `/api/v1/capabilities`, `/system`, `/snapshot`, `/cpu`, `/memory`, `/disks`, `/network`, `/gpu`, `/sensors`, `/battery`, `/processes` (with privacy minimization), `/metrics/history`, and authenticated read-only stream.

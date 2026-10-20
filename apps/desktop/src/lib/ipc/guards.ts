@@ -17,20 +17,24 @@ import type {
   GpuAdapter,
   GpuDisplay,
   GpuInfoReport,
+  HostLiveState,
+  HostStatus,
   MetricCapability,
   MetricReading,
   NotificationStateInfo,
+  PairingWindowInfo,
   ProcessActionResult,
   ProcessPage,
   RecordingSession,
   RemoteSetup,
   RemoteStatus,
+  RemoveHostResult,
   RuleProbe,
   Settings,
   SystemSnapshot,
   TelemetryEventPayload,
 } from "./types";
-import { SCHEMA_VERSION } from "./types";
+import { HOST_STATUSES, SCHEMA_VERSION } from "./types";
 
 const AVAILABILITIES: readonly Availability[] = [
   "available",
@@ -185,6 +189,24 @@ export function isSettings(value: unknown): value is Settings {
   if (!["off", "loopback", "lan"].includes(remote.mode as string)) return false;
   if (!isFiniteNumber(remote.port)) return false;
   if (value.remote_token_hash !== null && typeof value.remote_token_hash !== "string") {
+    return false;
+  }
+  // Phase 10 fields. Records are validated structurally only (the Rust
+  // side owns them); a missing array is still a contract violation.
+  if (typeof value.remote_display_name !== "string") return false;
+  if (!isFiniteNumber(value.remote_poll_seconds)) return false;
+  if (!Array.isArray(value.remote_devices) || !Array.isArray(value.remote_hosts)) return false;
+  if (
+    !value.remote_hosts.every(
+      (host) =>
+        isRecord(host) &&
+        typeof host.host_id === "string" &&
+        typeof host.label === "string" &&
+        typeof host.endpoint === "string" &&
+        typeof host.fingerprint_sha256 === "string" &&
+        typeof host.record_history === "boolean"
+    )
+  ) {
     return false;
   }
   const lookup = value.external_lookup;
@@ -372,19 +394,119 @@ export function isRuleProbe(value: unknown): value is RuleProbe {
   return typeof value.crossing_now === "boolean" && typeof value.explanation === "string";
 }
 
+export function isPairingWindowInfo(value: unknown): value is PairingWindowInfo {
+  if (!isRecord(value)) return false;
+  return typeof value.code === "string" && isFiniteNumber(value.secs_remaining);
+}
+
 export function isRemoteStatus(value: unknown): value is RemoteStatus {
   if (!isRecord(value)) return false;
   if (!["off", "loopback", "lan"].includes(value.mode as string)) return false;
   if (!isFiniteNumber(value.port)) return false;
   if (typeof value.running !== "boolean") return false;
   if (typeof value.token_exists !== "boolean") return false;
-  return value.url === undefined || typeof value.url === "string";
+  if (value.url !== undefined && typeof value.url !== "string") return false;
+  if (typeof value.display_name !== "string") return false;
+  if (value.tls_fingerprint !== null && typeof value.tls_fingerprint !== "string") return false;
+  if (value.pairing !== null && !isPairingWindowInfo(value.pairing)) return false;
+  if (!Array.isArray(value.devices)) return false;
+  return value.devices.every(
+    (device) =>
+      isRecord(device) &&
+      typeof device.device_id === "string" &&
+      typeof device.label === "string" &&
+      typeof device.created_at_utc === "string" &&
+      isFiniteNumber(device.protocol_version) &&
+      (device.last_seen_secs === null || isFiniteNumber(device.last_seen_secs))
+  );
 }
 
 export function isRemoteSetup(value: unknown): value is RemoteSetup {
   if (!isRecord(value)) return false;
   if (!isRemoteStatus(value.status)) return false;
   return value.token_once === undefined || typeof value.token_once === "string";
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isNullableNumber(value: unknown): value is number | null {
+  return value === null || isFiniteNumber(value);
+}
+
+/** Phase 10: a host state must carry identity, status and both clocks. */
+export function isHostLiveState(value: unknown): value is HostLiveState {
+  if (!isRecord(value)) return false;
+  if (typeof value.host_id !== "string" || value.host_id.length === 0) return false;
+  if (typeof value.label !== "string" || typeof value.endpoint !== "string") return false;
+  if (typeof value.fingerprint_sha256 !== "string") return false;
+  if (typeof value.device_id !== "string") return false;
+  if (!isFiniteNumber(value.protocol_version)) return false;
+  if (typeof value.record_history !== "boolean") return false;
+  if (!HOST_STATUSES.includes(value.status as HostStatus)) return false;
+  if (!isNullableNumber(value.last_success_ms) || !isNullableNumber(value.age_ms)) return false;
+  if (!isNullableString(value.last_error_code) || !isNullableString(value.last_error)) {
+    return false;
+  }
+  if (!isNullableString(value.remote_collected_at_utc)) return false;
+  if (!isNullableNumber(value.remote_sequence) || !isNullableNumber(value.clock_skew_ms)) {
+    return false;
+  }
+  if (typeof value.no_sample_yet !== "boolean") return false;
+  if (!isNullableString(value.agent_version) || !isNullableString(value.agent_display_name)) {
+    return false;
+  }
+  if (!Array.isArray(value.families) || !value.families.every((f) => typeof f === "string")) {
+    return false;
+  }
+  if (
+    !Array.isArray(value.headline) ||
+    !value.headline.every(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        typeof entry[0] === "string" &&
+        Array.isArray(entry[1]) &&
+        entry[1].every(
+          (sample: unknown) =>
+            isRecord(sample) && isFiniteNumber(sample.ts_utc_ms) && isFiniteNumber(sample.value)
+        )
+    )
+  ) {
+    return false;
+  }
+  return (
+    Array.isArray(value.readings) &&
+    value.readings.every(
+      (reading) =>
+        isRecord(reading) &&
+        typeof reading.metric_id === "string" &&
+        typeof reading.entity_id === "string" &&
+        isFiniteNumber(reading.value) &&
+        typeof reading.unit === "string" &&
+        typeof reading.collected_at_utc === "string" &&
+        isFiniteNumber(reading.sequence)
+    )
+  );
+}
+
+export function isHostLiveStateList(value: unknown): value is HostLiveState[] {
+  return Array.isArray(value) && value.every((host) => isHostLiveState(host));
+}
+
+export function isRemoveHostResult(value: unknown): value is RemoveHostResult {
+  if (!isRecord(value)) return false;
+  if (typeof value.host_id !== "string") return false;
+  if (typeof value.history_purged !== "boolean") return false;
+  const deleted = value.history_deleted;
+  if (deleted === null) return true;
+  return (
+    isRecord(deleted) &&
+    isFiniteNumber(deleted.raw_deleted) &&
+    isFiniteNumber(deleted.rollup_1m_deleted) &&
+    isFiniteNumber(deleted.rollup_1h_deleted)
+  );
 }
 
 export function isRecordingSession(value: unknown): value is RecordingSession {

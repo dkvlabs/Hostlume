@@ -51,9 +51,45 @@ pub struct AppState {
     /// Running remote server (phase 08); `None` while the user keeps the
     /// default OFF. Stopped on disable and on app exit.
     pub remote: Mutex<Option<monitor_remote::RemoteServerHandle>>,
+    /// Paired remote hosts this console reads (phase 10). Workers run only
+    /// for hosts the user paired; stopped on app exit.
+    pub hosts: Arc<crate::hosts::HostsRuntime>,
+    /// App data directory (TLS identity, credential file).
+    pub data_dir: std::path::PathBuf,
 }
 
 impl AppState {
+    /// Persist one numeric reading received from a paired host under that
+    /// host's id (phase 10). The timestamp is the agent's own sample time;
+    /// per-host series therefore stay internally consistent and the UI
+    /// shows the measured skew separately.
+    pub fn record_remote_sample(
+        &self,
+        host_id: &str,
+        reading: &monitor_remote::client::RemoteReading,
+    ) {
+        if !reading.value.is_finite() {
+            return;
+        }
+        let guard = self
+            .history_writer
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if let Some(writer) = guard.as_ref() {
+            writer.enqueue(monitor_history::WriteItem::Sample {
+                host_id: host_id.to_string(),
+                metric_id: reading.metric_id.clone(),
+                entity_id: reading.entity_id.clone(),
+                ts_utc_ms: crate::hosts::parse_iso8601_utc_ms(&reading.collected_at_utc)
+                    .unwrap_or_else(|| monitor_core::SystemClock.now_epoch_ms()),
+                value_real: reading.value,
+                source: format!("remote:{host_id}"),
+                generation: String::new(),
+                sequence: reading.sequence,
+            });
+        }
+    }
+
     /// Enqueue one available numeric reading for persistence. No-op after
     /// the writer closed at shutdown.
     pub fn record_sample(&self, reading: &monitor_core::MetricReading) {

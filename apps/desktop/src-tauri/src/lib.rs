@@ -8,6 +8,7 @@ pub mod actions;
 pub mod alerts;
 pub mod collectors;
 pub mod commands;
+pub mod hosts;
 pub mod processes;
 pub mod recordings;
 pub mod remote;
@@ -343,12 +344,17 @@ pub fn run() {
                 history_dir: Mutex::new(Some(history_dir)),
                 alerts: alert_runtime,
                 remote: Mutex::new(None),
+                hosts: Arc::new(hosts::HostsRuntime::open(&data_dir)?),
+                data_dir: data_dir.clone(),
             });
             // Phase 08 startup: crash-recover recording sessions, then
             // apply the persisted remote configuration — a listener starts
-            // only when the user opted in (loopback) AND a token exists.
+            // only when the user opted in (loopback or LAN) AND a token exists.
             recordings::recover_interrupted_recordings(&handle.state::<AppState>());
             remote::apply_remote_at_startup(&handle.state::<AppState>());
+            // Phase 10: poll the hosts the user paired earlier (and nothing
+            // else — an empty registry opens no socket).
+            handle.state::<AppState>().hosts.start_all(&handle);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -401,6 +407,14 @@ pub fn run() {
             remote::configure_remote,
             remote::remote_rotate_token,
             remote::remote_revoke_token,
+            remote::remote_open_pairing_window,
+            remote::remote_close_pairing_window,
+            remote::remote_revoke_device,
+            hosts::get_hosts_state,
+            hosts::pair_host,
+            hosts::remove_host,
+            hosts::rename_host,
+            hosts::set_host_recording,
             recordings::start_recording,
             recordings::stop_recording,
             recordings::list_recordings,
@@ -413,6 +427,9 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app_handle.try_state::<AppState>() {
                     state.scheduler.stop();
+                    // Host pollers stop before the writer flushes so no
+                    // remote sample is enqueued into a closed writer.
+                    state.hosts.stop_all();
                     commands::shutdown_history(&state);
                     remote::shutdown_remote(&state);
                 }

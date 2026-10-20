@@ -1,6 +1,6 @@
 [package]
 name = "monitor-remote"
-description = "Optional read-only remote monitor server (phase 08, FX-019)"
+description = "Optional read-only remote monitor server + paired-host client (phases 08/10, FX-019/FX-022)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,14 +11,20 @@ publish.workspace = true
 axum = "0.8.6"
 monitor-core = { workspace = true }
 monitor-history = { workspace = true }
+# TLS for LAN mode (phase 10, ADR-0009). `ring` is the only crypto provider
+# enabled anywhere in the workspace; aws-lc-rs is deliberately not pulled.
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring"] }
+rustls = { version = "0.23.19", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
 tokio-stream = { workspace = true }
+# Console-side agent client (phase 10): synchronous, pinned-certificate HTTPS.
+ureq = { version = "2.10", default-features = false, features = ["tls", "json"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
 rusqlite = { workspace = true }
-ureq = { version = "2.10", features = ["json"] }

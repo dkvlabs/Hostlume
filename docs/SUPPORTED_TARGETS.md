@@ -63,3 +63,11 @@ Windows and Linux toolchains: **NOT PRESENT on this machine** — first verifica
 | Linux x86_64 (GNOME / KDE) | **Not built, not claimed** | Fixture-tested parsers only; WebKitGTK/tray/packaging never exercised (ADR-0005) |
 
 Rollout posture (phase 09 §5): ship the macOS arm64 candidate once signed, labelled as the only supported target; other targets stay "intended" with transparent gating until native evidence exists.
+
+## Phase 10 multi-host status (20.10.2026, FX-022)
+
+| Capability | Status | Basis |
+|---|---|---|
+| Console ↔ agent over pinned TLS (loopback) | **Verified** — release bundle as console vs `demo-agent` (real `monitor-remote` TLS server, synthetic labelled values): Live card, lsof ESTABLISHED, 2,600+ readings ingested under the agent host id, poller 0.0–1.7 % CPU | docs/progress/PHASE-10.md §6, docs/evidence/phase-10-hosts-live.png |
+| Pairing / revocation / MITM / reconnect / clock skew / duplicate id / partition | **Verified by 11 real-TLS integration tests** (loopback-bound agent via the test seam) | `crates/monitor-remote/tests/multi_host.rs`, ADR-0009 |
+| Console ↔ agent over a **physical LAN with two machines** | **NOT validated** — no second device in this session; the 0.0.0.0 LAN bind is production code but unexercised on hardware | docs/progress/PHASE-10.md §9 |

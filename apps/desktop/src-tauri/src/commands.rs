@@ -153,6 +153,7 @@ pub fn update_settings(
     let launch_at_login_value = patch.launch_at_login;
     let tray_changed = patch.tray.is_some();
     let alerts_changed = patch.alerts.is_some();
+    let display_name_changed = patch.remote_display_name.is_some();
     let store = &state.store;
     let mut updated = store
         .load_settings()
@@ -167,6 +168,10 @@ pub fn update_settings(
     state
         .polling_secs
         .store(updated.polling_base_seconds, Ordering::Relaxed);
+    // Phase 10: the name paired consoles see follows the setting live.
+    if display_name_changed {
+        crate::remote::apply_display_name(&state, &updated.remote_display_name);
+    }
     // Phase 06: tray configuration applies live (visibility follows
     // `enabled`; value rows follow the toggles on the next snapshot).
     if tray_changed {

@@ -7,7 +7,50 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SETTINGS_SCHEMA_VERSION: u32 = 8;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 9;
+
+/// Console poll interval for paired remote hosts (phase 10). Two seconds is
+/// the floor so a console cannot be configured into hammering an agent.
+pub const REMOTE_POLL_MIN_SECS: u32 = 2;
+pub const REMOTE_POLL_MAX_SECS: u32 = 60;
+pub const REMOTE_POLL_DEFAULT_SECS: u32 = 5;
+
+/// Console-side record of a paired remote host (phase 10, FX-022). Carries
+/// **no secret**: the device token lives in the restricted credential file
+/// managed by `hosts.rs` (metrics-data-contract.md: credentials and LAN
+/// tokens are never stored in general settings) and never reaches the
+/// WebView.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PairedHostConfig {
+    pub host_id: String,
+    pub label: String,
+    /// `host:port` as typed by the user (no discovery in v1).
+    pub endpoint: String,
+    /// Pinned SHA-256 of the agent's DER certificate (hex).
+    pub fingerprint_sha256: String,
+    /// This console's identity at that agent.
+    pub device_id: String,
+    pub protocol_version: u32,
+    pub added_at_utc: String,
+    /// Persist the host's readings into local history under its host id.
+    pub record_history: bool,
+}
+
+impl Default for PairedHostConfig {
+    fn default() -> Self {
+        Self {
+            host_id: String::new(),
+            label: String::new(),
+            endpoint: String::new(),
+            fingerprint_sha256: String::new(),
+            device_id: String::new(),
+            protocol_version: monitor_remote::protocol::PROTOCOL_VERSION,
+            added_at_utc: String::new(),
+            record_history: false,
+        }
+    }
+}
 
 /// Safe polling bounds (seconds). The contract's base tick is 3 s; anything
 /// below 1 s would fight the documented PDH/collectors cost profile, and
@@ -188,6 +231,16 @@ pub struct Settings {
     /// the dedicated commands (never user-patchable).
     pub remote: monitor_remote::RemoteConfig,
     pub remote_token_hash: Option<String>,
+    /// Phase 10 (FX-022): the user-chosen name this machine presents to
+    /// paired consoles — never the OS hostname, serial or MAC.
+    pub remote_display_name: String,
+    /// Consoles paired to this machine's agent (token **hashes** only;
+    /// managed by the pairing flow and the revoke command, not patchable).
+    pub remote_devices: Vec<monitor_remote::PairedDevice>,
+    /// Remote hosts this console reads (no secrets — see `hosts.rs`;
+    /// managed by the pair/remove commands, not patchable).
+    pub remote_hosts: Vec<PairedHostConfig>,
+    pub remote_poll_seconds: u32,
 }
 
 pub fn default_overview_cards() -> Vec<OverviewCard> {
@@ -219,6 +272,10 @@ impl Default for Settings {
             alerts: AlertsConfig::default(),
             remote: monitor_remote::RemoteConfig::default(),
             remote_token_hash: None,
+            remote_display_name: monitor_remote::protocol::DEFAULT_DISPLAY_NAME.to_string(),
+            remote_devices: Vec::new(),
+            remote_hosts: Vec::new(),
+            remote_poll_seconds: REMOTE_POLL_DEFAULT_SECS,
         }
     }
 }
@@ -248,6 +305,18 @@ pub enum SettingsError {
     QuietMinuteOutOfBounds { value: u16, max: u16 },
     #[error("remote port {value} is outside {min}..={max}")]
     RemotePortOutOfBounds { value: u16, min: u16, max: u16 },
+    #[error("remote display name must be 1..=48 printable characters")]
+    RemoteDisplayNameInvalid,
+    #[error("remote poll interval {value}s is outside {min}..={max}s")]
+    RemotePollOutOfBounds { value: u32, min: u32, max: u32 },
+    #[error("too many paired devices (max {max})")]
+    RemoteDeviceLimit { max: usize },
+    #[error("paired device record {device_id:?} is invalid or duplicated")]
+    RemoteDeviceInvalid { device_id: String },
+    #[error("too many paired hosts (max {max})")]
+    RemoteHostLimit { max: usize },
+    #[error("paired host record {host_id:?} is invalid or duplicated")]
+    RemoteHostInvalid { host_id: String },
 }
 
 impl Settings {
@@ -316,6 +385,62 @@ impl Settings {
                 SettingsError::RemotePortOutOfBounds { value, min, max }
             }
         })?;
+        if !monitor_remote::protocol::display_name_is_valid(&self.remote_display_name) {
+            return Err(SettingsError::RemoteDisplayNameInvalid);
+        }
+        if !(REMOTE_POLL_MIN_SECS..=REMOTE_POLL_MAX_SECS).contains(&self.remote_poll_seconds) {
+            return Err(SettingsError::RemotePollOutOfBounds {
+                value: self.remote_poll_seconds,
+                min: REMOTE_POLL_MIN_SECS,
+                max: REMOTE_POLL_MAX_SECS,
+            });
+        }
+        if self.remote_devices.len() > monitor_remote::protocol::MAX_DEVICES {
+            return Err(SettingsError::RemoteDeviceLimit {
+                max: monitor_remote::protocol::MAX_DEVICES,
+            });
+        }
+        for (index, device) in self.remote_devices.iter().enumerate() {
+            let duplicate = self.remote_devices[..index]
+                .iter()
+                .any(|other| other.device_id == device.device_id);
+            if duplicate
+                || !monitor_remote::pairing::identifier_is_valid(
+                    &device.device_id,
+                    monitor_remote::pairing::MAX_DEVICE_ID_LEN,
+                )
+                || !monitor_remote::pairing::label_is_valid(&device.label)
+                || !monitor_remote::pairing::fingerprint_hex_is_valid(&device.token_hash)
+            {
+                return Err(SettingsError::RemoteDeviceInvalid {
+                    device_id: device.device_id.clone(),
+                });
+            }
+        }
+        if self.remote_hosts.len() > monitor_remote::client::MAX_HOSTS {
+            return Err(SettingsError::RemoteHostLimit {
+                max: monitor_remote::client::MAX_HOSTS,
+            });
+        }
+        for (index, host) in self.remote_hosts.iter().enumerate() {
+            let duplicate = self.remote_hosts[..index]
+                .iter()
+                .any(|other| other.host_id == host.host_id);
+            if duplicate
+                || !monitor_remote::pairing::identifier_is_valid(&host.host_id, 64)
+                || !monitor_remote::pairing::identifier_is_valid(
+                    &host.device_id,
+                    monitor_remote::pairing::MAX_DEVICE_ID_LEN,
+                )
+                || !monitor_remote::pairing::label_is_valid(&host.label)
+                || !monitor_remote::pairing::fingerprint_hex_is_valid(&host.fingerprint_sha256)
+                || monitor_remote::client::AgentEndpoint::parse(&host.endpoint).is_err()
+            {
+                return Err(SettingsError::RemoteHostInvalid {
+                    host_id: host.host_id.clone(),
+                });
+            }
+        }
         Ok(())
     }
 
@@ -352,8 +477,23 @@ impl Settings {
         if let Some(external_lookup) = patch.external_lookup {
             self.external_lookup = external_lookup;
         }
+        // Phase 10 audit finding: these two patch fields were accepted but
+        // never applied since phase 06, so tray changes and launch-at-login
+        // never persisted (the OS login item toggled, the setting did not).
+        if let Some(tray) = patch.tray {
+            self.tray = tray;
+        }
+        if let Some(launch_at_login) = patch.launch_at_login {
+            self.launch_at_login = launch_at_login;
+        }
         if let Some(alerts) = patch.alerts {
             self.alerts = alerts;
+        }
+        if let Some(name) = patch.remote_display_name {
+            self.remote_display_name = name.trim().to_string();
+        }
+        if let Some(seconds) = patch.remote_poll_seconds {
+            self.remote_poll_seconds = seconds;
         }
     }
 }
@@ -392,6 +532,11 @@ pub struct SettingsPatch {
     pub tray: Option<TrayConfig>,
     pub launch_at_login: Option<bool>,
     pub alerts: Option<AlertsConfig>,
+    /// Phase 10: user-patchable multi-host preferences. Device and host
+    /// records are deliberately absent — only the dedicated commands
+    /// (pairing, revoke, remove) touch them.
+    pub remote_display_name: Option<String>,
+    pub remote_poll_seconds: Option<u32>,
 }
 
 /// The v5 row shape (adds temperature unit + Phase 05 overview cards;
@@ -572,6 +717,10 @@ impl SettingsV7 {
             alerts: self.alerts,
             remote: monitor_remote::RemoteConfig::default(),
             remote_token_hash: None,
+            remote_display_name: monitor_remote::protocol::DEFAULT_DISPLAY_NAME.to_string(),
+            remote_devices: Vec::new(),
+            remote_hosts: Vec::new(),
+            remote_poll_seconds: REMOTE_POLL_DEFAULT_SECS,
         }
     }
 }
@@ -1023,6 +1172,137 @@ mod tests {
         ));
         s.remote.port = monitor_remote::DEFAULT_PORT;
         assert!(s.validate().is_ok());
+    }
+
+    /// Phase 10 audit finding: `tray` and `launch_at_login` patches were
+    /// accepted but silently dropped since phase 06. Pinned here.
+    #[test]
+    fn patch_applies_tray_and_launch_at_login() {
+        let mut s = Settings::default();
+        assert!(!s.launch_at_login);
+        let tray = TrayConfig {
+            enabled: !s.tray.enabled,
+            ..s.tray
+        };
+        let patch: SettingsPatch = serde_json::from_value(serde_json::json!({
+            "launch_at_login": true,
+            "tray": tray,
+        }))
+        .unwrap();
+        s.apply_patch(patch);
+        assert!(s.launch_at_login);
+        assert_eq!(s.tray.enabled, tray.enabled);
+        s.validate().unwrap();
+    }
+
+    /// Phase 10: user-patchable multi-host preferences are bounded; device
+    /// and host records are not patchable at all (unknown keys rejected).
+    #[test]
+    fn remote_display_name_and_poll_are_patchable_and_bounded() {
+        let mut s = Settings::default();
+        let patch: SettingsPatch = serde_json::from_value(serde_json::json!({
+            "remote_display_name": "  Office Mac  ",
+            "remote_poll_seconds": 10,
+        }))
+        .unwrap();
+        s.apply_patch(patch);
+        assert_eq!(s.remote_display_name, "Office Mac");
+        assert_eq!(s.remote_poll_seconds, 10);
+        s.validate().unwrap();
+
+        s.remote_poll_seconds = 1;
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemotePollOutOfBounds { value: 1, .. })
+        ));
+        s.remote_poll_seconds = REMOTE_POLL_DEFAULT_SECS;
+        s.remote_display_name = "bad\u{7}name".into();
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemoteDisplayNameInvalid)
+        ));
+
+        let hosts_patch = serde_json::from_value::<SettingsPatch>(serde_json::json!({
+            "remote_hosts": []
+        }));
+        assert!(hosts_patch.is_err(), "host records are not user-patchable");
+        let devices_patch = serde_json::from_value::<SettingsPatch>(serde_json::json!({
+            "remote_devices": []
+        }));
+        assert!(
+            devices_patch.is_err(),
+            "device records are not user-patchable"
+        );
+    }
+
+    fn host(host_id: &str, endpoint: &str) -> PairedHostConfig {
+        PairedHostConfig {
+            host_id: host_id.into(),
+            label: "Office Mac".into(),
+            endpoint: endpoint.into(),
+            fingerprint_sha256: "ab".repeat(32),
+            device_id: "console-1".into(),
+            protocol_version: monitor_remote::protocol::PROTOCOL_VERSION,
+            added_at_utc: "2026-10-19T00:00:00.000Z".into(),
+            record_history: false,
+        }
+    }
+
+    #[test]
+    fn paired_host_records_are_validated_and_bounded() {
+        let mut s = Settings::default();
+        s.remote_hosts.push(host("h-1", "192.168.1.5:45454"));
+        s.validate().unwrap();
+
+        // Duplicate host id.
+        s.remote_hosts.push(host("h-1", "192.168.1.6:45454"));
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemoteHostInvalid { .. })
+        ));
+        s.remote_hosts.pop();
+
+        // Bad fingerprint / bad endpoint / bad label.
+        let mut bad = host("h-2", "192.168.1.6:45454");
+        bad.fingerprint_sha256 = "zz".into();
+        s.remote_hosts.push(bad);
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemoteHostInvalid { .. })
+        ));
+        s.remote_hosts.pop();
+        s.remote_hosts.push(host("h-3", "nope"));
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemoteHostInvalid { .. })
+        ));
+        s.remote_hosts.pop();
+
+        // Cap.
+        for i in 0..monitor_remote::client::MAX_HOSTS {
+            s.remote_hosts
+                .push(host(&format!("cap-{i}"), &format!("10.0.0.{i}:45454")));
+        }
+        assert!(matches!(
+            s.validate(),
+            Err(SettingsError::RemoteHostLimit { .. })
+        ));
+
+        // Device records: hash shape + duplicates.
+        let mut d = Settings::default();
+        d.remote_devices.push(monitor_remote::PairedDevice {
+            device_id: "console-1".into(),
+            label: "Console".into(),
+            token_hash: "ab".repeat(32),
+            created_at_utc: "2026-10-19T00:00:00.000Z".into(),
+            protocol_version: 1,
+        });
+        d.validate().unwrap();
+        d.remote_devices.push(d.remote_devices[0].clone());
+        assert!(matches!(
+            d.validate(),
+            Err(SettingsError::RemoteDeviceInvalid { .. })
+        ));
     }
 
     #[test]

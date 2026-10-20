@@ -34,9 +34,9 @@ pub use query::{
     DEFAULT_MAX_POINTS, MAX_MAX_POINTS,
 };
 pub use retention::{
-    clear_samples, compute_rollups, retain, RetentionSummary, RollupGranularity, RollupRow,
-    DEFAULT_RAW_HOURS, DEFAULT_ROLLUP_1H_DAYS, DEFAULT_ROLLUP_1M_DAYS, ROLLUP_BUCKET_1H_MS,
-    ROLLUP_BUCKET_1M_MS,
+    clear_samples, compute_rollups, delete_host_samples, retain, RetentionSummary,
+    RollupGranularity, RollupRow, DEFAULT_RAW_HOURS, DEFAULT_ROLLUP_1H_DAYS,
+    DEFAULT_ROLLUP_1M_DAYS, ROLLUP_BUCKET_1H_MS, ROLLUP_BUCKET_1M_MS,
 };
 pub use sessions::{
     get_session, list_sessions, mark_interrupted_sessions, start_session, stop_session,

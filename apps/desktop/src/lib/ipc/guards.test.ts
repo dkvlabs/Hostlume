@@ -3,13 +3,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isCapabilityReport,
+  isHostLiveState,
   isMetricReading,
+  isRemoteStatus,
   isSettings,
   isSystemSnapshot,
   isTelemetryEventPayload,
 } from "./guards";
 import { SETTINGS_SCHEMA_VERSION } from "./types";
-import type { SystemSnapshot } from "./types";
+import type { HostLiveState, SystemSnapshot } from "./types";
 
 function validSnapshot(): SystemSnapshot {
   return {
@@ -150,6 +152,10 @@ describe("isSettings", () => {
     launch_at_login: false,
     remote: { mode: "off", port: 45454 },
     remote_token_hash: null,
+    remote_display_name: "This computer",
+    remote_devices: [],
+    remote_hosts: [],
+    remote_poll_seconds: 5,
     alerts: {
       notifications_enabled: true,
       actions_enabled: false,
@@ -250,6 +256,122 @@ describe("isTelemetryEventPayload", () => {
         sequence: 1,
         collectedAtUtc: "x",
         capabilitiesRevision: 1,
+      })
+    ).toBe(false);
+  });
+});
+
+// ---- Phase 10 (FX-022): host states and the extended remote status ----------
+
+function hostState(overrides: Partial<HostLiveState> = {}): HostLiveState {
+  return {
+    host_id: "remote-1",
+    label: "Office Mac",
+    endpoint: "192.168.1.5:45454",
+    fingerprint_sha256: "ab".repeat(32),
+    device_id: "console-1",
+    protocol_version: 1,
+    record_history: false,
+    status: "stale",
+    last_success_ms: 1_792_368_000_000,
+    age_ms: 24_000,
+    last_error_code: null,
+    last_error: null,
+    remote_collected_at_utc: "2026-10-19T12:00:00.000Z",
+    remote_sequence: 42,
+    clock_skew_ms: 250,
+    no_sample_yet: false,
+    agent_version: null,
+    agent_display_name: null,
+    families: ["cpu"],
+    headline: [["cpu.total.usage", [{ ts_utc_ms: 1_792_368_000_000, value: 3.1 }]]],
+    readings: [
+      {
+        metric_id: "cpu.total.usage",
+        entity_id: "host",
+        value: 3.1,
+        unit: "percent",
+        collected_at_utc: "2026-10-19T12:00:00.000Z",
+        sequence: 42,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe("phase 10 guards", () => {
+  it("accepts a full host state and rejects broken ones", () => {
+    expect(isHostLiveState(hostState())).toBe(true);
+    expect(isHostLiveState(hostState({ status: "cert_mismatch" }))).toBe(true);
+    expect(isHostLiveState(hostState({ readings: [] }))).toBe(true);
+    expect(isHostLiveState(hostState({ host_id: "" }))).toBe(false);
+    expect(isHostLiveState(hostState({ status: "live" as never }))).toBe(false);
+    expect(
+      isHostLiveState(
+        hostState({
+          headline: [["cpu", [{ ts_utc_ms: "x" as never, value: 1 }]]],
+        })
+      )
+    ).toBe(false);
+    expect(
+      isHostLiveState(
+        hostState({
+          readings: [
+            {
+              metric_id: "cpu.total.usage",
+              entity_id: "host",
+              value: Number.NaN,
+              unit: "percent",
+              collected_at_utc: "x",
+              sequence: 1,
+            },
+          ],
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("the remote status guard now requires the phase 10 fields", () => {
+    expect(
+      isRemoteStatus({
+        running: true,
+        mode: "lan",
+        port: 45454,
+        token_exists: true,
+        display_name: "This computer",
+        tls_fingerprint: "ab".repeat(32),
+        pairing: { code: "ABCD2345", secs_remaining: 100 },
+        devices: [
+          {
+            device_id: "console-1",
+            label: "Console",
+            created_at_utc: "2026-10-19T00:00:00.000Z",
+            protocol_version: 1,
+            last_seen_secs: null,
+          },
+        ],
+      })
+    ).toBe(true);
+    // The pre-phase-10 shape (no display_name/devices) must fail loudly:
+    // an outdated WebView talking to a newer backend is a contract break.
+    expect(
+      isRemoteStatus({
+        running: false,
+        mode: "off",
+        port: 45454,
+        token_exists: false,
+      })
+    ).toBe(false);
+    expect(
+      isRemoteStatus({
+        running: false,
+        mode: "off",
+        port: 45454,
+        token_exists: false,
+        display_name: "x",
+        tls_fingerprint: null,
+        pairing: null,
+        // devices missing → contract break
       })
     ).toBe(false);
   });

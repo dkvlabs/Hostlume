@@ -1,11 +1,14 @@
-//! The read-only HTTP surface (phase 08 §3.7–§3.11).
+//! The read-only HTTP surface (phase 08 §3.7–§3.11, phase 10 ADR-0009).
 //!
 //! * `GET /api/v1/{capabilities,system,snapshot,cpu,memory,disks,network,
-//!   gpu,sensors,battery,bluetooth,processes,metrics/history}` — token- or
-//!   session-authenticated, privacy-projected, bounded.
-//! * `POST /api/v1/session` — the only POST: exchanges the token for a
-//!   short-lived HttpOnly SameSite=Strict cookie so the built-in
-//!   dashboard's EventSource needs no URL token (forbidden).
+//!   gpu,sensors,battery,bluetooth,processes,metrics/history,manifest}` —
+//!   token- or session-authenticated, privacy-projected, bounded.
+//! * `POST /api/v1/session` — exchanges the owner token for a short-lived
+//!   HttpOnly SameSite=Strict cookie so the built-in dashboard's
+//!   EventSource needs no URL token (forbidden).
+//! * `POST /api/v1/pair` — the pairing exchange (phase 10): unauthenticated
+//!   by necessity, but code-gated (one attempt per code), rate-limited, and
+//!   only answered while the agent user holds a pairing window open.
 //! * `GET /` — the embedded read-only dashboard (no data without auth).
 //! * Everything else: 404; wrong methods: 405 by method routing — there is
 //!   no write, kill, trash or shell handler and no Tauri bridge.
@@ -25,19 +28,22 @@ use axum::response::sse::{Event, KeepAlive};
 use axum::response::{IntoResponse, Response, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use monitor_core::families;
+use monitor_core::{families, Clock};
 use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::auth::{self, RateDecision};
-use crate::projection;
+use crate::auth::{self, Principal, RateDecision};
+use crate::pairing::{self, PairError};
+use crate::protocol::{self, Manifest, PairRequest, PairResponse, PairedDevice};
+use crate::tls::ClientAddr;
 use crate::{
-    RemoteData, ServerShared, MAX_SSE_CLIENTS, REMOTE_MAX_POINTS, REMOTE_MAX_SPAN_MS,
-    SSE_SEND_TIMEOUT, SSE_TICK,
+    projection, DeviceCredential, RemoteData, ServerShared, MAX_SSE_CLIENTS, REMOTE_MAX_POINTS,
+    REMOTE_MAX_SPAN_MS, SSE_SEND_TIMEOUT, SSE_TICK,
 };
 
 pub const SESSION_COOKIE: &str = "hostlume_session";
+const MAX_BODY: usize = 4_096;
 
 pub struct AppShared {
     pub data: Arc<RemoteData>,
@@ -49,6 +55,7 @@ pub fn router(data: Arc<RemoteData>, shared: Arc<ServerShared>) -> Router {
     Router::new()
         .route("/", get(dashboard))
         .route("/api/v1/capabilities", get(capabilities))
+        .route("/api/v1/manifest", get(manifest))
         .route("/api/v1/system", get(system))
         .route("/api/v1/snapshot", get(snapshot))
         .route("/api/v1/cpu", get(cpu))
@@ -63,6 +70,7 @@ pub fn router(data: Arc<RemoteData>, shared: Arc<ServerShared>) -> Router {
         .route("/api/v1/metrics/history", get(metrics_history))
         .route("/api/v1/stream", get(stream))
         .route("/api/v1/session", post(create_session))
+        .route("/api/v1/pair", post(pair))
         .fallback(fallback_404)
         .with_state(state)
 }
@@ -83,12 +91,13 @@ fn error_body(code: &str) -> serde_json::Value {
 /// Authentication + rate-limit gate shared by every data route.
 fn authorize(
     state: &AppShared,
-    ip: std::net::SocketAddr,
+    ip: ClientAddr,
     headers: &HeaderMap,
-) -> Result<(), Response> {
+) -> Result<Principal, Response> {
+    state.shared.requests_seen.fetch_add(1, Ordering::SeqCst);
     let limited = {
         let mut rate = state.shared.rate.lock().unwrap_or_else(|p| p.into_inner());
-        rate.check(ip.ip())
+        rate.check(ip.0.ip())
     };
     if limited == RateDecision::Limit {
         return Err(api_response(
@@ -96,25 +105,19 @@ fn authorize(
             error_body("rate_limited"),
         ));
     }
-    if is_authed(state, headers) {
-        Ok(())
-    } else {
-        Err(api_response(
-            StatusCode::UNAUTHORIZED,
-            error_body("unauthorized"),
-        ))
-    }
+    principal(state, headers)
+        .ok_or_else(|| api_response(StatusCode::UNAUTHORIZED, error_body("unauthorized")))
 }
 
-/// Bearer token or dashboard session cookie. Neither the token nor the
-/// session id is ever logged or echoed back.
-fn is_authed(state: &AppShared, headers: &HeaderMap) -> bool {
+/// Bearer token (owner or paired device) or dashboard session cookie.
+/// Neither the token nor the session id is ever logged or echoed back.
+fn principal(state: &AppShared, headers: &HeaderMap) -> Option<Principal> {
     if let Some(value) = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
     {
         if let Some(token) = value.strip_prefix("Bearer ") {
-            return auth::token_matches(token, &state.shared.token_hash());
+            return state.shared.authenticate_bearer(token);
         }
     }
     if let Some(cookies) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) {
@@ -129,12 +132,12 @@ fn is_authed(state: &AppShared, headers: &HeaderMap) -> bool {
                     .unwrap_or_else(|p| p.into_inner())
                     .is_valid(sid, Instant::now());
                 if valid {
-                    return true;
+                    return Some(Principal::Owner);
                 }
             }
         }
     }
-    false
+    None
 }
 
 fn latest_snapshot(state: &AppShared) -> Result<monitor_core::SystemSnapshot, Response> {
@@ -151,7 +154,7 @@ fn latest_snapshot(state: &AppShared) -> Result<monitor_core::SystemSnapshot, Re
 
 async fn capabilities(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     headers: HeaderMap,
 ) -> Result<Response, Response> {
     authorize(&state, ip, &headers)?;
@@ -167,9 +170,45 @@ async fn capabilities(
     ))
 }
 
+/// Versioned capability handshake (ADR-0009 §1). Authenticated: the
+/// display name and host id are not broadcast to unpaired peers.
+async fn manifest(
+    State(state): State<Arc<AppShared>>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
+    headers: HeaderMap,
+) -> Result<Response, Response> {
+    authorize(&state, ip, &headers)?;
+    let families = {
+        let report = state
+            .data
+            .capabilities
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        protocol::families_of(&report)
+    };
+    let manifest = Manifest {
+        protocol_version: protocol::PROTOCOL_VERSION,
+        agent_version: protocol::AGENT_VERSION.to_string(),
+        host_id: state.data.host_id.clone(),
+        display_name: state
+            .shared
+            .display_name
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
+        cadence_ms: state.data.cadence_ms,
+        families,
+        tls_fingerprint_sha256: state.shared.tls_fingerprint_hex.clone(),
+    };
+    Ok(api_response(
+        StatusCode::OK,
+        serde_json::to_value(manifest).unwrap_or_else(|_| error_body("serialize")),
+    ))
+}
+
 async fn system(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     headers: HeaderMap,
 ) -> Result<Response, Response> {
     authorize(&state, ip, &headers)?;
@@ -183,7 +222,7 @@ async fn system(
 
 async fn snapshot(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     headers: HeaderMap,
 ) -> Result<Response, Response> {
     authorize(&state, ip, &headers)?;
@@ -199,7 +238,7 @@ macro_rules! family_route {
     ($name:ident, $family:literal) => {
         async fn $name(
             State(state): State<Arc<AppShared>>,
-            ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+            ConnectInfo(ip): ConnectInfo<ClientAddr>,
             headers: HeaderMap,
         ) -> Result<Response, Response> {
             authorize(&state, ip, &headers)?;
@@ -224,7 +263,7 @@ family_route!(bluetooth, "bluetooth.");
 
 async fn processes(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     headers: HeaderMap,
 ) -> Result<Response, Response> {
     authorize(&state, ip, &headers)?;
@@ -245,7 +284,7 @@ async fn processes(
 #[allow(clippy::too_many_arguments)]
 async fn metrics_history(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     headers: HeaderMap,
     QueryExtractor(params): QueryExtractor<std::collections::HashMap<String, String>>,
 ) -> Result<Response, Response> {
@@ -314,7 +353,7 @@ async fn metrics_history(
 
 async fn stream(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     headers: HeaderMap,
 ) -> Result<Response, Response> {
     authorize(&state, ip, &headers)?;
@@ -366,27 +405,21 @@ async fn stream(
         .into_response())
 }
 
-// ---- session exchange + dashboard -------------------------------------------
+// ---- session exchange, pairing, dashboard -----------------------------------
 
-/// The single POST route: token → HttpOnly SameSite=Strict session cookie.
-/// Auth failures are rate-limited per IP (brute-force budget).
+/// Owner token → HttpOnly SameSite=Strict session cookie. Auth failures
+/// are rate-limited per IP (brute-force budget). Device tokens cannot mint
+/// dashboard sessions: the dashboard is the owner's surface.
 async fn create_session(
     State(state): State<Arc<AppShared>>,
-    ConnectInfo(ip): ConnectInfo<std::net::SocketAddr>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
     _headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    {
-        let mut auth_rate = state
-            .shared
-            .auth_rate
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        if auth_rate.check(ip.ip()) == RateDecision::Limit {
-            return api_response(StatusCode::TOO_MANY_REQUESTS, error_body("rate_limited"));
-        }
+    if auth_rate_limited(&state, ip) {
+        return api_response(StatusCode::TOO_MANY_REQUESTS, error_body("rate_limited"));
     }
-    if body.len() > 4_096 {
+    if body.len() > MAX_BODY {
         return api_response(StatusCode::PAYLOAD_TOO_LARGE, error_body("payload"));
     }
     let parsed: Result<serde_json::Value, _> = serde_json::from_slice(&body);
@@ -421,6 +454,124 @@ async fn create_session(
         Json(json!({ "ok": true })),
     )
         .into_response()
+}
+
+fn auth_rate_limited(state: &AppShared, ip: ClientAddr) -> bool {
+    let mut auth_rate = state
+        .shared
+        .auth_rate
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    auth_rate.check(ip.0.ip()) == RateDecision::Limit
+}
+
+/// Pairing exchange (ADR-0009 §3). Order of checks is deliberate: cheap
+/// shape/version rejections happen **without** touching the window, so a
+/// malformed probe cannot burn a code the real console is about to use;
+/// every attempt that reaches the proof check consumes the window.
+async fn pair(
+    State(state): State<Arc<AppShared>>,
+    ConnectInfo(ip): ConnectInfo<ClientAddr>,
+    body: Bytes,
+) -> Response {
+    state.shared.requests_seen.fetch_add(1, Ordering::SeqCst);
+    if auth_rate_limited(&state, ip) {
+        return api_response(StatusCode::TOO_MANY_REQUESTS, error_body("rate_limited"));
+    }
+    if body.len() > MAX_BODY {
+        return api_response(StatusCode::PAYLOAD_TOO_LARGE, error_body("payload"));
+    }
+    let Ok(request) = serde_json::from_slice::<PairRequest>(&body) else {
+        return api_response(StatusCode::BAD_REQUEST, error_body("malformed"));
+    };
+    if !protocol::is_compatible(request.protocol_version) {
+        return api_response(
+            StatusCode::CONFLICT,
+            json!({ "error": "incompatible", "protocol_version": protocol::PROTOCOL_VERSION }),
+        );
+    }
+    if !pairing::identifier_is_valid(&request.device_id, pairing::MAX_DEVICE_ID_LEN)
+        || !pairing::identifier_is_valid(&request.nonce, pairing::MAX_NONCE_LEN)
+        || !pairing::label_is_valid(&request.device_label)
+    {
+        return api_response(StatusCode::BAD_REQUEST, error_body("malformed"));
+    }
+    let Some(fingerprint) = state.shared.tls_fingerprint_hex.clone() else {
+        // Loopback (plain HTTP) has no certificate to bind the proof to.
+        return api_response(StatusCode::CONFLICT, error_body("pairing_unavailable"));
+    };
+    if state.shared.device_count() >= protocol::MAX_DEVICES {
+        return api_response(StatusCode::CONFLICT, error_body("device_limit"));
+    }
+
+    let verified = {
+        let mut guard = state
+            .shared
+            .pairing
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let Some(window) = guard.as_mut() else {
+            return api_response(StatusCode::FORBIDDEN, error_body("no_pairing_window"));
+        };
+        let result = window.verify(
+            Instant::now(),
+            &request.device_id,
+            &request.nonce,
+            &fingerprint,
+            &request.proof,
+        );
+        // Whatever happened, this window is spent.
+        *guard = None;
+        result
+    };
+    let ack = match verified {
+        Ok(ack) => ack,
+        Err(PairError::Expired) => {
+            return api_response(StatusCode::FORBIDDEN, error_body("expired"));
+        }
+        Err(PairError::Burned) | Err(PairError::NoWindow) => {
+            return api_response(StatusCode::FORBIDDEN, error_body("no_pairing_window"));
+        }
+        Err(PairError::InvalidProof) => {
+            return api_response(StatusCode::FORBIDDEN, error_body("invalid_proof"));
+        }
+        Err(PairError::Malformed) => {
+            return api_response(StatusCode::BAD_REQUEST, error_body("malformed"));
+        }
+    };
+
+    let device_token = auth::generate_token();
+    let token_hash = auth::hash_token(&device_token);
+    let device = PairedDevice {
+        device_id: request.device_id.clone(),
+        label: request.device_label.trim().to_string(),
+        token_hash: token_hash.clone(),
+        created_at_utc: monitor_core::SystemClock.now_utc_iso8601(),
+        protocol_version: protocol::PROTOCOL_VERSION,
+    };
+    state.shared.add_device(DeviceCredential {
+        device_id: device.device_id.clone(),
+        token_hash,
+    });
+    if let Some(persist) = state.data.on_device_paired.as_ref() {
+        persist(device);
+    }
+    let response = PairResponse {
+        device_token,
+        host_id: state.data.host_id.clone(),
+        display_name: state
+            .shared
+            .display_name
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
+        protocol_version: protocol::PROTOCOL_VERSION,
+        ack,
+    };
+    api_response(
+        StatusCode::OK,
+        serde_json::to_value(response).unwrap_or_else(|_| error_body("serialize")),
+    )
 }
 
 async fn dashboard() -> Response {

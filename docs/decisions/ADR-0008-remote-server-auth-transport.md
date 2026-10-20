@@ -1,6 +1,6 @@
 # ADR-0008 — Remote server transport, auth and the LAN gate
 
-**Status:** accepted (phase 08)
+**Status:** accepted (phase 08); LAN gate lifted in phase 10 by [ADR-0009](ADR-0009-multi-host-pairing-protocol.md) — LAN mode ships over pinned TLS only, and still fails closed without a TLS identity
 **Date:** 2026-10-19
 **Context:** FX-019, `docs/phases/08-comparison-remote.md` §3, `docs/security-privacy.md` §6
 

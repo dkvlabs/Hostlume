@@ -161,9 +161,17 @@ impl SessionMap {
     }
 }
 
+/// Who presented a valid bearer token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Principal {
+    Owner,
+    Device(String),
+}
+
 impl super::ServerShared {
-    /// Hot-swap the accepted token (rotation). Old tokens, and every
+    /// Hot-swap the accepted owner token (rotation). Old tokens, and every
     /// dashboard session minted from them, stop working immediately.
+    /// Paired devices are unaffected: they have their own credentials.
     pub fn rotate_token(&self, new_hash: String) {
         *self.token_hash.lock().unwrap_or_else(|p| p.into_inner()) = new_hash;
         self.sessions
@@ -177,6 +185,56 @@ impl super::ServerShared {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .clone()
+    }
+
+    /// Owner token first, then every paired device (each compared in
+    /// constant shape). A device match refreshes its last-seen clock.
+    pub fn authenticate_bearer(&self, token: &str) -> Option<Principal> {
+        if token_matches(token, &self.token_hash()) {
+            return Some(Principal::Owner);
+        }
+        let matched = {
+            let devices = self.devices.lock().unwrap_or_else(|p| p.into_inner());
+            devices
+                .iter()
+                .find(|device| token_matches(token, &device.token_hash))
+                .map(|device| device.device_id.clone())
+        };
+        let device_id = matched?;
+        self.device_last_seen
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(device_id.clone(), Instant::now());
+        Some(Principal::Device(device_id))
+    }
+
+    /// Replace the live device credential set (startup load, bulk revoke).
+    pub fn set_devices(&self, devices: Vec<super::DeviceCredential>) {
+        *self.devices.lock().unwrap_or_else(|p| p.into_inner()) = devices;
+    }
+
+    /// Add (or replace by id) one credential; bounded by
+    /// [`super::protocol::MAX_DEVICES`] — the caller checks the cap first.
+    pub fn add_device(&self, credential: super::DeviceCredential) {
+        let mut devices = self.devices.lock().unwrap_or_else(|p| p.into_inner());
+        devices.retain(|d| d.device_id != credential.device_id);
+        devices.push(credential);
+    }
+
+    /// Revoke one device: its token stops working on the next request.
+    pub fn remove_device(&self, device_id: &str) {
+        self.devices
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .retain(|d| d.device_id != device_id);
+        self.device_last_seen
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(device_id);
+    }
+
+    pub fn device_count(&self) -> usize {
+        self.devices.lock().unwrap_or_else(|p| p.into_inner()).len()
     }
 }
 

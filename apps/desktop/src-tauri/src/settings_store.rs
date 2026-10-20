@@ -182,6 +182,17 @@ impl SettingsStore {
                 self.save_settings(&migrated)?;
                 Ok(migrated)
             }
+            8 => {
+                // v8 → v9 (phase 10): the v9 row is a strict superset, so a
+                // stored v8 row deserializes with `#[serde(default)]` for the
+                // multi-host fields; only the version stamp changes. Persisted
+                // once, like every other migration.
+                let mut migrated: Settings = serde_json::from_str(&json)?;
+                migrated.schema_version = SETTINGS_SCHEMA_VERSION;
+                migrated.validate()?;
+                self.save_settings(&migrated)?;
+                Ok(migrated)
+            }
             v if v == SETTINGS_SCHEMA_VERSION as i64 => {
                 let settings: Settings = serde_json::from_str(&json)?;
                 settings.validate()?;
@@ -489,6 +500,77 @@ mod tests {
         // v4 defaults: external lookup opt-in stays OFF.
         assert!(!migrated.external_lookup.enabled);
         assert_eq!(migrated.rate_unit, crate::settings::RateUnit::Bytes);
+        cleanup(&path);
+    }
+
+    /// Phase 10: a stored v8 row (phase 08/09 installs) loads as v9 with the
+    /// multi-host fields defaulted, keeps its remote configuration and token
+    /// hash, and is persisted at the new version exactly once.
+    #[test]
+    fn v8_row_migrates_to_v9_on_load() {
+        let path = temp_db_path("settings-v8-migration");
+        let store = SettingsStore::open(&path).unwrap();
+        let mut v8 = serde_json::to_value(crate::settings::Settings::default()).unwrap();
+        let object = v8.as_object_mut().unwrap();
+        object.insert("schema_version".into(), serde_json::json!(8));
+        object.insert(
+            "remote".into(),
+            serde_json::json!({ "mode": "loopback", "port": 46000 }),
+        );
+        object.insert(
+            "remote_token_hash".into(),
+            serde_json::json!("ab".repeat(32)),
+        );
+        for key in [
+            "remote_display_name",
+            "remote_devices",
+            "remote_hosts",
+            "remote_poll_seconds",
+        ] {
+            object.remove(key);
+        }
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO app_settings (key, schema_version, json_value) VALUES ('app', 8, ?1)",
+                rusqlite::params![v8.to_string()],
+            )
+            .unwrap();
+        }
+        let migrated = store.load_settings().unwrap();
+        assert_eq!(
+            migrated.schema_version,
+            crate::settings::SETTINGS_SCHEMA_VERSION
+        );
+        assert_eq!(migrated.remote.mode, monitor_remote::RemoteMode::Loopback);
+        assert_eq!(migrated.remote.port, 46000);
+        assert_eq!(
+            migrated.remote_token_hash.as_deref(),
+            Some("ab".repeat(32).as_str())
+        );
+        assert_eq!(
+            migrated.remote_display_name,
+            monitor_remote::protocol::DEFAULT_DISPLAY_NAME
+        );
+        assert!(migrated.remote_devices.is_empty());
+        assert!(migrated.remote_hosts.is_empty());
+        assert_eq!(
+            migrated.remote_poll_seconds,
+            crate::settings::REMOTE_POLL_DEFAULT_SECS
+        );
+        let stored_version: i64 = {
+            let conn = store.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT schema_version FROM app_settings WHERE key = 'app'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            stored_version,
+            i64::from(crate::settings::SETTINGS_SCHEMA_VERSION)
+        );
         cleanup(&path);
     }
 }

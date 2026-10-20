@@ -37,6 +37,8 @@ Inside it:
   - recording session labels you created.
 - `exports/` — CSV files you exported. Nothing is written there unless you click Export.
 - `crash.log` — if the app ever hits an internal error, one line per occurrence (time, thread, source location, error text). It is for your own diagnosis and is **never transmitted**.
+- `remote-tls/` — if you switch the remote monitor to LAN mode: this machine's own HTTPS certificate and private key (owner-only file). Consoles that pair with this machine pin its fingerprint.
+- `remote-credentials.json` — if you pair this console with other machines: the access tokens those machines gave you (owner-only file; never in settings, exports or the app window). Removing a host deletes its token.
 
 Metric history, storage-scan results and process lists are never written outside this directory. Storage scans are kept **in memory only** for the session.
 
@@ -51,8 +53,9 @@ By default: nothing. Specifically, the app does not transmit metrics, process na
 Lets you open a live dashboard in a browser **on this same computer**.
 
 - Off by default: no network port is opened until you turn it on.
-- When enabled it listens **only on `127.0.0.1` (this computer)**. The "local network (LAN)" mode is intentionally **unavailable in this version** because it requires TLS; the app refuses to start it.
+- When enabled it listens **only on `127.0.0.1` (this computer)**, or — if you explicitly switch to **LAN mode** — on your local network over **HTTPS with this machine's own certificate** (the app refuses LAN without a certificate). Other computers can only pair by typing a **single-use pairing code** shown on this screen, and each paired computer gets its own token you can **revoke individually**; the app stores only SHA-256 hashes.
 - Access requires a random token that is shown to you **once**; the app stores only its SHA-256 hash. You can rotate or revoke it; revoking stops the server.
+- **Paired computers (Hosts page):** this app can also act as the *console* — reading numeric metrics from machines you paired. Every remote value is labelled with the host it came from and its timestamp; stale values are never shown as live. There is **no remote control** in either direction: no quit, no delete, no settings, no commands. Pairing codes and access tokens are never written to settings, exports or logs.
 - The dashboard is **read-only**: it exposes numeric metrics and a sanitized process table (name, pid, CPU, memory). It deliberately does **not** expose IP/MAC addresses, interface or hostnames on metric routes, process command lines or file paths, and it has **no** controls — no quit, no delete, no settings.
 - Rate-limited and connection-capped. No cookies except the dashboard session cookie (HttpOnly, SameSite=Strict, expires in 12 h, in memory only).
 

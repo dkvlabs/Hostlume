@@ -59,6 +59,10 @@ function settings(overrides: Partial<Settings> = {}): Settings {
         },
         remote: { mode: "off", port: 45454 },
         remote_token_hash: null,
+        remote_display_name: "This computer",
+        remote_devices: [],
+        remote_hosts: [],
+        remote_poll_seconds: 5,
     ...overrides,
   };
 }

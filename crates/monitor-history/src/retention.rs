@@ -235,3 +235,83 @@ pub fn clear_samples(conn: &Connection) -> Result<RetentionSummary, rusqlite::Er
         rollup_1h_deleted: conn.execute("DELETE FROM samples_rollup_1h", [])? as u64,
     })
 }
+
+/// Delete every sample tier for one host (phase 10: "the user can safely
+/// remove hosts and their associated history"). Scoped strictly by
+/// `host_id`; audits, alert rows and other hosts are untouched.
+pub fn delete_host_samples(
+    conn: &Connection,
+    host_id: &str,
+) -> Result<RetentionSummary, rusqlite::Error> {
+    Ok(RetentionSummary {
+        raw_deleted: conn.execute(
+            "DELETE FROM samples_raw WHERE host_id = ?1",
+            rusqlite::params![host_id],
+        )? as u64,
+        rollup_1m_deleted: conn.execute(
+            "DELETE FROM samples_rollup_1m WHERE host_id = ?1",
+            rusqlite::params![host_id],
+        )? as u64,
+        rollup_1h_deleted: conn.execute(
+            "DELETE FROM samples_rollup_1h WHERE host_id = ?1",
+            rusqlite::params![host_id],
+        )? as u64,
+    })
+}
+
+#[cfg(test)]
+mod host_delete_tests {
+    use super::*;
+
+    fn migrated() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        crate::apply_migrations(&mut conn, crate::MIGRATIONS).unwrap();
+        conn
+    }
+
+    fn insert(conn: &Connection, host: &str, ts: i64) {
+        conn.execute(
+            "INSERT INTO samples_raw (host_id, metric_id, entity_id, ts_utc_ms, value_real, source, generation, sequence) \
+             VALUES (?1, 'cpu.total.usage', 'host', ?2, 1.0, 'test', 'g', 1)",
+            rusqlite::params![host, ts],
+        )
+        .unwrap();
+    }
+
+    fn count(conn: &Connection, table: &str, host: &str) -> i64 {
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM {table} WHERE host_id = ?1"),
+            rusqlite::params![host],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn deleting_one_host_leaves_every_other_host_intact() {
+        let conn = migrated();
+        for ts in 0..5 {
+            insert(&conn, "remote-host", ts * 60_000);
+            insert(&conn, "local-host", ts * 60_000);
+        }
+        for host in ["remote-host", "local-host"] {
+            compute_rollups(&conn, host, RollupGranularity::OneMinute, 0, 10 * 60_000).unwrap();
+            compute_rollups(&conn, host, RollupGranularity::OneHour, 0, 3_600_000).unwrap();
+        }
+        assert!(count(&conn, "samples_rollup_1m", "remote-host") >= 1);
+
+        let summary = delete_host_samples(&conn, "remote-host").unwrap();
+        assert_eq!(summary.raw_deleted, 5);
+        assert!(summary.rollup_1m_deleted >= 1);
+        assert!(summary.rollup_1h_deleted >= 1);
+        assert_eq!(count(&conn, "samples_raw", "remote-host"), 0);
+        assert_eq!(count(&conn, "samples_rollup_1m", "remote-host"), 0);
+        assert_eq!(count(&conn, "samples_rollup_1h", "remote-host"), 0);
+        assert_eq!(count(&conn, "samples_raw", "local-host"), 5);
+        assert!(count(&conn, "samples_rollup_1m", "local-host") >= 1);
+
+        // Idempotent.
+        let again = delete_host_samples(&conn, "remote-host").unwrap();
+        assert_eq!(again.raw_deleted, 0);
+    }
+}

@@ -30,6 +30,10 @@ vi.mock("@/lib/ipc/client", () => ({
       mode: "off",
       port: 45454,
       token_exists: false,
+      display_name: "This computer",
+      tls_fingerprint: null,
+      pairing: null,
+      devices: [],
     })),
     configureRemote: vi.fn(),
     rotateRemoteToken: vi.fn(),
@@ -73,6 +77,10 @@ function settingsFixture(overrides: Partial<Settings> = {}): Settings {
     },
     remote: { mode: "off", port: 45454 },
     remote_token_hash: null,
+    remote_display_name: "This computer",
+    remote_devices: [],
+    remote_hosts: [],
+    remote_poll_seconds: 5,
     ...overrides,
   };
 }
